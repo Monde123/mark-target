@@ -146,3 +146,39 @@ Comme implémenté dans `adapters/bvh_adapter.py` via la double héritance `clas
      - Support des correspondances dynamiques sur mesure (`register()`).
   3. `tests/test_mappings.py` :
      - Suite de tests unitaires couvrant les 55 os, la hiérarchie parentale et les conversions croisées (7/7 tests OK).
+
+## 9. Documentation du Mapping Personnalisé (Custom Rig / Mimo / Blender Rigify)
+
+* **Documentation complète :** Voir `docs/CUSTOM_MAPPING.md`.
+* **Fonctionnalités livrées :**
+  - Chargement de fichier JSON : `MappingRegistry.register_from_json(path, src, tgt)`
+  - Export de template JSON : `MappingRegistry.export_to_json(src, tgt, path)`
+  - Argument CLI direct dans `run_marker_retarget.py` : `--custom-mapping custom.json`
+
+## 10. Périmètre Délimité : Moteur de Retargeting Pur
+
+Conformément aux directives d'ingénierie :
+* **mark-target ne fait QUE le retargeting géométrique 3D déterministe.**
+* L'extraction amont depuis la vidéo 2D (pixels -> 3D) est expressément déléguée à une pipeline indépendante dédiée (ex: **Mimo**, HybrIK-X, ou 4D-Humans).
+* `mark-target` prend les sorties 3D de ces outils (`.pk`, `.bvh`, dictionnaires de sommets) et garantit un transfert mathématiquement optimal sans artefacts vers le `.glb` cible.
+
+## 11. Étape 2 Réalisée : Solveur Hybride (Kabsch-Umeyama & Bézier SQUAD)
+
+* **Statut :** Complété & Validé par 18 tests unitaires (`Ran 18 tests in 0.022s OK`).
+* **Modifications apportées :**
+  1. `core/kabsch.py` :
+     - Implémentation de `kabsch_umeyama_rotation()` et `weighted_kabsch_umeyama_rotation()`.
+     - Résolution conjointe de la rotation $R \in \text{SO}(3)$, du facteur d'échelle $c = \frac{\operatorname{Tr}(DS)}{\sigma_A^2}$ et de la translation $t$.
+     - Absorption naturelle des disparités morphologiques et d'épaisseur corporelle.
+  2. `retargeting/smoothing.py` :
+     - Algorithme de De Casteljau dans $\mathbb{R}^3$ pour le lissage des trajectoires de position.
+     - Splines sphériques Bézier **SQUAD** et interpolation **SLERP** sur la 3-sphère des quaternions $\mathbb{S}^3$.
+     - Fonctions exponentielles et logarithmiques de l'algèbre de Lie $\mathfrak{so}(3)$.
+     - Élimination prouvée du bruit et du jitter haute fréquence (`test_jitter_reduction`).
+  3. `retargeting/solver.py` :
+     - Support du flag `use_umeyama=True` dans `solve_frame_multi_kabsch`.
+     - Méthode de séquence complète `solve_sequence(...)` avec lissage temporel automatisé.
+  4. `run_marker_retarget.py` :
+     - Ajout des drapeaux CLI `--use-umeyama` et `--smoothing-factor FLOAT`.
+  5. `tests/test_umeyama_and_smoothing.py` :
+     - 6 tests unitaires spécifiques validant l'exactitude d'Umeyama et la continuité de Bézier SQUAD.

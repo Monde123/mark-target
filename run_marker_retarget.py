@@ -34,6 +34,8 @@ def main():
     parser.add_argument("--output", required=True, help="Chemin de sortie pour l'animation")
     parser.add_argument("--root-x-degrees", type=float, default=0.0, help="Correction axiale X sur le root")
     parser.add_argument("--custom-mapping", type=str, default=None, help="Chemin vers un fichier JSON de mapping personnalise")
+    parser.add_argument("--use-umeyama", action="store_true", default=False, help="Active le solveur Kabsch-Umeyama avec absorption d echelle uniforme")
+    parser.add_argument("--smoothing-factor", type=float, default=0.0, help="Facteur de lissage temporel Bezier/SLERP (0.0=aucun, 0.3=recommande)")
     args = parser.parse_args()
     if args.custom_mapping:
         from mappings.registry import MappingRegistry
@@ -86,6 +88,7 @@ def main():
             positions_rest=sequence.rest_markers,
             weights=sequence.weights,
             root_rot_override=root_override,
+            use_umeyama=args.use_umeyama,
         )
 
         Q_local = global_to_local_hierarchy(Q_global, skeleton.parents)

@@ -146,3 +146,144 @@ def weighted_kabsch_rotation(
     rms = float(np.sqrt(np.sum(weighted_sq_err)))
 
     return R, centroid_rest, centroid_current, rms, S
+
+
+def kabsch_umeyama_rotation(
+    P_rest: np.ndarray,
+    P_current: np.ndarray,
+    min_rank_ratio: float = 1e-3,
+    max_rms_ratio: Optional[float] = None,
+) -> Tuple[np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    """
+    Algorithme de Kabsch-Umeyama (1991) :
+    Résout conjointement la Rotation R, le Facteur d'Échelle uniforme c, et la Translation t.
+    
+    Minimise : sum || B_i - (c * R @ A_i + t) ||^2
+    
+    Retourne :
+        R: ndarray (3, 3) matrice de rotation propre dans SO(3)
+        c: float, facteur d'échelle uniforme (> 0)
+        t: ndarray (3,), vecteur de translation globale
+        centroid_rest: ndarray (3,)
+        centroid_current: ndarray (3,)
+        rms_error: float
+        singular_values: ndarray (3,)
+    """
+    A = np.asarray(P_rest, dtype=np.float64)
+    B = np.asarray(P_current, dtype=np.float64)
+
+    if A.shape != B.shape or A.ndim != 2 or A.shape[1] != 3:
+        raise ValueError(f"Nuages incompatibles: A={A.shape}, B={B.shape}")
+    if A.shape[0] < 3:
+        raise ValueError(f"Kabsch-Umeyama requiert >= 3 points, reçu {A.shape[0]}")
+    if not np.isfinite(A).all() or not np.isfinite(B).all():
+        raise ValueError("Les nuages contiennent des valeurs NaN ou Inf")
+
+    n = A.shape[0]
+    centroid_rest = A.mean(axis=0)
+    centroid_current = B.mean(axis=0)
+
+    A_c = A - centroid_rest
+    B_c = B - centroid_current
+
+    # Variance de A
+    var_A = float(np.sum(A_c * A_c) / n)
+    if var_A < 1e-12:
+        raise ValueError("Dispersion de A quasi nulle, impossible de résoudre l'échelle")
+
+    # Covariance croisée normalisée H = (1/n) * A_c.T @ B_c
+    H = (A_c.T @ B_c) / n
+    U, S, Vt = np.linalg.svd(H)
+
+    if S[0] > 0 and (S[2] / S[0]) < min_rank_ratio:
+        raise ValueError(
+            f"Points quasi colinéaires (S2/S0 = {S[2]/S[0]:.2e} < {min_rank_ratio})"
+        )
+
+    # Déterminant pour protection anti-réflexion
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    if d == 0:
+        d = 1.0
+
+    D = np.diag([1.0, 1.0, d])
+    R = Vt.T @ D @ U.T
+
+    # Facteur d'échelle uniforme d'Umeyama : c = Tr(D @ S) / var_A
+    c = float(np.sum(np.diag(D) * S) / var_A)
+    if c <= 1e-8:
+        c = 1.0
+
+    # Translation optimale : t = centroid_B - c * R @ centroid_A
+    t = centroid_current - c * (R @ centroid_rest)
+
+    # Résidu RMS
+    B_pred = (c * (R @ A.T)).T + t
+    diff = B - B_pred
+    rms = float(np.sqrt(np.mean(np.sum(diff * diff, axis=1))))
+
+    return R, c, t, centroid_rest, centroid_current, rms, S
+
+
+def weighted_kabsch_umeyama_rotation(
+    P_rest: np.ndarray,
+    P_current: np.ndarray,
+    weights: np.ndarray,
+    min_points: int = 3,
+    min_rank_ratio: float = 1e-3,
+) -> Tuple[np.ndarray, float, np.ndarray, np.ndarray, np.ndarray, float, np.ndarray]:
+    """
+    Version pondérée de l'algorithme de Kabsch-Umeyama (R, c, t pondérés).
+    """
+    A = np.asarray(P_rest, dtype=np.float64)
+    B = np.asarray(P_current, dtype=np.float64)
+    w = np.asarray(weights, dtype=np.float64).reshape(-1)
+
+    if A.shape != B.shape or A.shape[0] != w.shape[0]:
+        raise ValueError(f"Dimensions incompatibles: A={A.shape}, B={B.shape}, w={w.shape}")
+    if A.shape[0] < min_points:
+        raise ValueError(f"Nombre de points insuffisant ({A.shape[0]} < {min_points})")
+
+    w = np.clip(w, 0.0, None)
+    w_sum = float(w.sum())
+    if w_sum <= 1e-12:
+        w = np.ones(len(A), dtype=np.float64)
+        w_sum = float(len(A))
+
+    w_norm = (w / w_sum)[:, None]
+    centroid_rest = np.sum(A * w_norm, axis=0)
+    centroid_current = np.sum(B * w_norm, axis=0)
+
+    A_c = A - centroid_rest
+    B_c = B - centroid_current
+
+    var_A = float(np.sum(w[:, None] * (A_c * A_c)) / w_sum)
+    if var_A < 1e-12:
+        var_A = 1.0
+
+    H = ((A_c * w[:, None]).T @ B_c) / w_sum
+    U, S, Vt = np.linalg.svd(H)
+
+    if S[0] > 0 and (S[2] / S[0]) < min_rank_ratio:
+        raise ValueError(
+            f"Configuration dégénérée Umeyama (S2/S0 = {S[2]/S[0]:.2e} < {min_rank_ratio})"
+        )
+
+    d = np.sign(np.linalg.det(Vt.T @ U.T))
+    if d == 0:
+        d = 1.0
+
+    D = np.diag([1.0, 1.0, d])
+    R = Vt.T @ D @ U.T
+
+    c = float(np.sum(np.diag(D) * S) / var_A)
+    if c <= 1e-8:
+        c = 1.0
+
+    t = centroid_current - c * (R @ centroid_rest)
+
+    B_pred = (c * (R @ A.T)).T + t
+    diff = B - B_pred
+    weighted_sq_err = np.sum(diff * diff, axis=1) * (w / w_sum)
+    rms = float(np.sqrt(np.sum(weighted_sq_err)))
+
+    return R, c, t, centroid_rest, centroid_current, rms, S
