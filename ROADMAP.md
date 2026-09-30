@@ -132,3 +132,17 @@ Comme implémenté dans `adapters/bvh_adapter.py` via la double héritance `clas
   ```bash
   python run_marker_retarget.py --source anim.bvh --source-type bvh --target avatar.glb --target-type mixamo --output out_anim.glb
   ```
+
+## 8. Étape 1 Réalisée : Configuration & Stabilisation du Mapping Universel
+
+* **Statut :** Complété & Validé par tests unitaires (`tests/test_mappings.py`).
+* **Modifications apportées :**
+  1. `mappings/standard_humanoid.py` :
+     - Intégration complète des 55 os standards (22 corps + 3 tête/visage/mâchoire/yeux + 30 segments de doigts).
+     - Correction des membres inférieurs Mixamo (ajout des jambes `LeftUpLeg`, `LeftLeg`, `LeftFoot`, `LeftToeBase` etc.).
+     - Ajout des tables bidirectionnelles `SMPLX_TO_STANDARD` (55 joints HybrIK-X) et `BVH_TO_STANDARD` (conventions CMU/Biovision).
+  2. `mappings/registry.py` :
+     - Résolution automatique bidirectionnelle multi-formats (`smplx`, `hybrik`, `mixamo`, `vrm`, `bvh`, `standard`).
+     - Support des correspondances dynamiques sur mesure (`register()`).
+  3. `tests/test_mappings.py` :
+     - Suite de tests unitaires couvrant les 55 os, la hiérarchie parentale et les conversions croisées (7/7 tests OK).
