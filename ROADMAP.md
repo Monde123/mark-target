@@ -122,3 +122,13 @@ Phase 5 : Interface de prévisualisation 3D Web (Three.js) avec affichage temps 
 1. **Isolation des dépendances :** HybrIK-X nécessite PyTorch et CUDA. `mark-target` tourne en quelques millisecondes sur un simple CPU avec NumPy.
 2. **Agnosticisme de la source :** Tout autre estimateur de maillage peut remplacer HybrIK-X sans modifier une seule ligne du solveur de retargeting.
 3. **Fidélité biomécanique :** HybrIK-X résout la vision, `mark-target` garantit qu'aucun os ne vrille sur le rig cible.
+
+## 7. Prise en Charge Bidirectionnelle du Format BVH (.bvh)
+
+Comme implémenté dans `adapters/bvh_adapter.py` via la double héritance `class BVHAdapter(SourceAdapter, TargetAdapter)` :
+* **BVH en Source :** Lit la section `HIERARCHY` et `MOTION` d'un fichier MoCap BVH, extrait les trajectoires spatiales 3D des joints pour alimenter le solveur.
+* **BVH vers Cible Arbitraire :** Retargeting direct vers `.glb` (Mixamo), `.vrm` (VRoid) ou un autre `.bvh` via le pont `MappingRegistry`.
+* **Exemple CLI supporté nativement :**
+  ```bash
+  python run_marker_retarget.py --source anim.bvh --source-type bvh --target avatar.glb --target-type mixamo --output out_anim.glb
+  ```
