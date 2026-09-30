@@ -63,10 +63,12 @@ def kabsch_rotation(
     U, S, Vt = np.linalg.svd(H)
 
     # Vérification du rang / colinéarité
-    if S[0] > 0 and (S[2] / S[0]) < min_rank_ratio:
-        raise ValueError(
-            f"Points quasi colinéaires ou coplanaires dégradés (S2/S0 = {S[2]/S[0]:.2e} < {min_rank_ratio})"
-        )
+    if S[0] > 0:
+        ratio = (S[2] / S[0]) if A.shape[0] >= 4 else (S[1] / S[0])
+        if ratio < min_rank_ratio:
+            raise ValueError(
+                f"Points quasi colinéaires (ratio = {ratio:.2e} < {min_rank_ratio})"
+            )
 
     # Correction anti-réflexion
     d = np.sign(np.linalg.det(Vt.T @ U.T))
@@ -129,10 +131,12 @@ def weighted_kabsch_rotation(
     H = (A_c * w[:, None]).T @ B_c
     U, S, Vt = np.linalg.svd(H)
 
-    if S[0] > 0 and (S[2] / S[0]) < min_rank_ratio:
-        raise ValueError(
-            f"Configuration de marqueurs dégénérée (S2/S0 = {S[2]/S[0]:.2e} < {min_rank_ratio})"
-        )
+    if S[0] > 0:
+        ratio = (S[2] / S[0]) if A.shape[0] >= 4 else (S[1] / S[0])
+        if ratio < min_rank_ratio:
+            raise ValueError(
+                f"Configuration dégénérée (ratio = {ratio:.2e} < {min_rank_ratio})"
+            )
 
     d = np.sign(np.linalg.det(Vt.T @ U.T))
     if d == 0:
@@ -195,10 +199,12 @@ def kabsch_umeyama_rotation(
     H = (A_c.T @ B_c) / n
     U, S, Vt = np.linalg.svd(H)
 
-    if S[0] > 0 and (S[2] / S[0]) < min_rank_ratio:
-        raise ValueError(
-            f"Points quasi colinéaires (S2/S0 = {S[2]/S[0]:.2e} < {min_rank_ratio})"
-        )
+    if S[0] > 0:
+        ratio = (S[2] / S[0]) if A.shape[0] >= 4 else (S[1] / S[0])
+        if ratio < min_rank_ratio:
+            raise ValueError(
+                f"Points quasi colinéaires (ratio = {ratio:.2e} < {min_rank_ratio})"
+            )
 
     # Déterminant pour protection anti-réflexion
     d = np.sign(np.linalg.det(Vt.T @ U.T))
@@ -263,10 +269,12 @@ def weighted_kabsch_umeyama_rotation(
     H = ((A_c * w[:, None]).T @ B_c) / w_sum
     U, S, Vt = np.linalg.svd(H)
 
-    if S[0] > 0 and (S[2] / S[0]) < min_rank_ratio:
-        raise ValueError(
-            f"Configuration dégénérée Umeyama (S2/S0 = {S[2]/S[0]:.2e} < {min_rank_ratio})"
-        )
+    if S[0] > 0:
+        ratio = (S[2] / S[0]) if A.shape[0] >= 4 else (S[1] / S[0])
+        if ratio < min_rank_ratio:
+            raise ValueError(
+                f"Configuration dégénérée (ratio = {ratio:.2e} < {min_rank_ratio})"
+            )
 
     d = np.sign(np.linalg.det(Vt.T @ U.T))
     if d == 0:

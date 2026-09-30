@@ -182,3 +182,19 @@ Conformément aux directives d'ingénierie :
      - Ajout des drapeaux CLI `--use-umeyama` et `--smoothing-factor FLOAT`.
   5. `tests/test_umeyama_and_smoothing.py` :
      - 6 tests unitaires spécifiques validant l'exactitude d'Umeyama et la continuité de Bézier SQUAD.
+
+## 12. Étape 3 Réalisée : Filtre RANSAC Algébrique & Tenseur de Green-Lagrange
+
+* **Statut :** Complété & Validé par 22 tests unitaires (`Ran 22 tests — OK`).
+* **Modifications apportées :**
+  1. `markers/ransac_filter.py` :
+     - Implémentation de `ransac_kabsch_alignment()` : sélectionne les triplets de consensus, évalue les résidus sur tous les marqueurs de l'os et ré-estime la rotation optimale en rejetant les marqueurs aberrants (occlusions, glissements).
+     - Implémentation de `compute_green_lagrange_strain()` : calcule le tenseur $E = \frac{1}{2}(F^T F - I_3)$ et l'énergie de déformation non rigide $\|E\|_F$.
+  2. `core/kabsch.py` :
+     - Condition de rang robuste adaptée pour $N \ge 3$ points.
+  3. `retargeting/solver.py` :
+     - Intégration de `use_ransac` et `max_strain_threshold` dans `solve_frame_multi_kabsch` et `solve_sequence`.
+  4. `run_marker_retarget.py` :
+     - Nouveaux drapeaux CLI : `--use-ransac` et `--max-strain FLOAT`.
+  5. `tests/test_ransac_and_deformation.py` :
+     - 4 tests unitaires validant l'invariance rigide de Green-Lagrange, la détection d'élongation non rigide, le rejet RANSAC d'outliers et la protection du solveur.

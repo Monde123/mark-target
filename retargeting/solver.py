@@ -1,8 +1,10 @@
 """Module isolate.retargeting.solver
 ====================================
-Solveur d'orientation universel multi-marqueurs basé sur Kabsch / Umeyama et Aim IK.
+Solveur d'orientation universel multi-marqueurs basé sur Kabsch / Umeyama, RANSAC et Aim IK.
 Supporte :
 - La résolution multi-marqueurs par Kabsch rigide ou Umeyama (avec absorption d'échelle)
+- Le filtrage robuste RANSAC contre les occlusions et marqueurs aberrants
+- Le monitoring de déformation élastique non-rigide par tenseur de Green-Lagrange
 - Le mode fallback à 1 marqueur par visée vectorielle (Aim IK)
 - Le lissage temporel de séquence via Bézier SQUAD / SLERP
 """
@@ -24,11 +26,15 @@ from core.kabsch import (
     kabsch_umeyama_rotation,
     weighted_kabsch_umeyama_rotation,
 )
+from markers.ransac_filter import (
+    ransac_kabsch_alignment,
+    compute_green_lagrange_strain,
+)
 from retargeting.smoothing import smooth_quaternion_trajectory
 
 
 class MarkerRetargetSolver:
-    """Solveur d'orientation par frame combinant Kabsch multi-points et Aim IK de secours."""
+    """Solveur d'orientation par frame combinant Kabsch/Umeyama multi-points, RANSAC et Aim IK."""
 
     def __init__(
         self,
@@ -60,9 +66,12 @@ class MarkerRetargetSolver:
         weights: Optional[Dict[str, np.ndarray]] = None,
         root_rot_override: Optional[Dict[str, np.ndarray]] = None,
         use_umeyama: bool = False,
+        use_ransac: bool = False,
+        ransac_threshold: float = 0.04,
+        max_strain_threshold: Optional[float] = None,
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         """
-        Résout l'orientation globale pour chaque os par Kabsch ou Umeyama multi-points.
+        Résout l'orientation globale pour chaque os par Kabsch, Umeyama ou RANSAC.
         """
         Q_global_t: Dict[str, np.ndarray] = {}
         diagnostics: Dict[str, Any] = {}
@@ -87,11 +96,31 @@ class MarkerRetargetSolver:
                 diagnostics[bone] = {"status": "fallback_insufficient_points"}
                 continue
 
+            # Contrôle de déformation non rigide (Green-Lagrange)
+            strain_val = 0.0
+            if max_strain_threshold is not None:
+                _, strain_val = compute_green_lagrange_strain(pts_r, pts_t)
+                if strain_val > max_strain_threshold:
+                    Q_global_t[bone] = q_rest.copy()
+                    diagnostics[bone] = {
+                        "status": "fallback_strain_exceeded",
+                        "strain": strain_val,
+                        "threshold": max_strain_threshold,
+                    }
+                    continue
+
             w = weights.get(bone) if weights else None
 
             try:
                 scale_val = 1.0
-                if use_umeyama:
+                s_vals = np.array([1.0, 1.0, 1.0])
+
+                if use_ransac and len(pts_r) >= 4:
+                    R_move, inlier_mask, rms, n_inliers = ransac_kabsch_alignment(
+                        pts_r, pts_t, inlier_threshold=ransac_threshold
+                    )
+                    diag_status = "ransac_success"
+                elif use_umeyama:
                     if w is not None:
                         R_move, scale_val, _, _, _, rms, s_vals = weighted_kabsch_umeyama_rotation(
                             pts_r, pts_t, weights=w, min_points=self.min_points_kabsch, min_rank_ratio=self.min_rank_ratio
@@ -100,6 +129,7 @@ class MarkerRetargetSolver:
                         R_move, scale_val, _, _, _, rms, s_vals = kabsch_umeyama_rotation(
                             pts_r, pts_t, min_rank_ratio=self.min_rank_ratio, max_rms_ratio=self.max_rms_ratio
                         )
+                    diag_status = "umeyama_success"
                 else:
                     if w is not None:
                         R_move, _, _, rms, s_vals = weighted_kabsch_rotation(
@@ -110,13 +140,15 @@ class MarkerRetargetSolver:
                         R_move, _, _, rms, s_vals = kabsch_rotation(
                             pts_r, pts_t, min_rank_ratio=self.min_rank_ratio, max_rms_ratio=self.max_rms_ratio,
                         )
+                    diag_status = "kabsch_success"
 
                 q_move = matrix_to_quaternion(R_move)
                 Q_global_t[bone] = quat_normalize(quat_mul(q_move, q_rest))
                 diagnostics[bone] = {
-                    "status": "umeyama_success" if use_umeyama else "kabsch_success",
+                    "status": diag_status,
                     "rms": rms,
                     "scale": scale_val,
+                    "strain": strain_val,
                     "singular_values": s_vals,
                 }
             except ValueError as e:
@@ -135,6 +167,9 @@ class MarkerRetargetSolver:
         weights: Optional[Dict[str, np.ndarray]] = None,
         smoothing_factor: float = 0.0,
         use_umeyama: bool = False,
+        use_ransac: bool = False,
+        ransac_threshold: float = 0.04,
+        max_strain_threshold: Optional[float] = None,
     ) -> List[Dict[str, np.ndarray]]:
         """
         Résout une séquence temporelle complète avec lissage temporel optionnel (Bézier/SLERP).
@@ -146,7 +181,15 @@ class MarkerRetargetSolver:
         # 1. Résolution frame par frame
         raw_frames_rotations: List[Dict[str, np.ndarray]] = []
         for pos_t in sequence_positions_t:
-            q_glob, _ = self.solve_frame_multi_kabsch(pos_t, positions_rest, weights=weights, use_umeyama=use_umeyama)
+            q_glob, _ = self.solve_frame_multi_kabsch(
+                pos_t,
+                positions_rest,
+                weights=weights,
+                use_umeyama=use_umeyama,
+                use_ransac=use_ransac,
+                ransac_threshold=ransac_threshold,
+                max_strain_threshold=max_strain_threshold,
+            )
             raw_frames_rotations.append(q_glob)
 
         if smoothing_factor <= 0.0 or n_frames <= 2:

@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--custom-mapping", type=str, default=None, help="Chemin vers un fichier JSON de mapping personnalise")
     parser.add_argument("--use-umeyama", action="store_true", default=False, help="Active le solveur Kabsch-Umeyama avec absorption d echelle uniforme")
     parser.add_argument("--smoothing-factor", type=float, default=0.0, help="Facteur de lissage temporel Bezier/SLERP (0.0=aucun, 0.3=recommande)")
+    parser.add_argument("--use-ransac", action="store_true", default=False, help="Active le filtrage robuste RANSAC contre les occlusions et marqueurs aberrants")
+    parser.add_argument("--max-strain", type=float, default=None, help="Seuil d energie de deformation Green-Lagrange max tolerable avant fallback")
     args = parser.parse_args()
     if args.custom_mapping:
         from mappings.registry import MappingRegistry
@@ -89,6 +91,8 @@ def main():
             weights=sequence.weights,
             root_rot_override=root_override,
             use_umeyama=args.use_umeyama,
+            use_ransac=args.use_ransac,
+            max_strain_threshold=args.max_strain,
         )
 
         Q_local = global_to_local_hierarchy(Q_global, skeleton.parents)
