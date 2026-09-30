@@ -33,7 +33,12 @@ def main():
     parser.add_argument("--target-type", choices=["mixamo", "vrm", "bvh"], required=True, help="Format cible")
     parser.add_argument("--output", required=True, help="Chemin de sortie pour l'animation")
     parser.add_argument("--root-x-degrees", type=float, default=0.0, help="Correction axiale X sur le root")
+    parser.add_argument("--custom-mapping", type=str, default=None, help="Chemin vers un fichier JSON de mapping personnalise")
     args = parser.parse_args()
+    if args.custom_mapping:
+        from mappings.registry import MappingRegistry
+        MappingRegistry.register_from_json(args.custom_mapping, args.source_type, args.target_type)
+        print(f"[isolate] Mapping personnalise applique depuis {args.custom_mapping}")
 
     print(f"[isolate] Chargement du squelette cible ({args.target_type}): {args.target}")
     if args.target_type == "mixamo":

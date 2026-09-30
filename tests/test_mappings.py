@@ -78,5 +78,35 @@ class TestMappingSubsystem(unittest.TestCase):
         self.assertEqual(resolved, custom_map)
 
 
+
+
+    def test_json_registration_and_export(self):
+        """Vérifie le chargement et l'exportation de mappings via JSON."""
+        import tempfile
+        import json
+
+        with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as f:
+            temp_json_path = f.name
+            json.dump({"custom_root": "mixamorig:Hips", "custom_arm": "mixamorig:LeftArm"}, f)
+
+        try:
+            MappingRegistry.register_from_json(temp_json_path, "custom_json_rig", "mixamo")
+            resolved = MappingRegistry.get_mapping("custom_json_rig", "mixamo")
+            self.assertEqual(resolved["custom_root"], "mixamorig:Hips")
+            self.assertEqual(resolved["custom_arm"], "mixamorig:LeftArm")
+
+            # Test export
+            with tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False) as f_exp:
+                export_path = f_exp.name
+            MappingRegistry.export_to_json("custom_json_rig", "mixamo", export_path)
+            with open(export_path, "r") as f_check:
+                exp_data = json.load(f_check)
+            self.assertEqual(exp_data["mapping"]["custom_root"], "mixamorig:Hips")
+            os.remove(export_path)
+        finally:
+            if os.path.exists(temp_json_path):
+                os.remove(temp_json_path)
+
+
 if __name__ == "__main__":
     unittest.main()
