@@ -198,3 +198,10 @@ Conformément aux directives d'ingénierie :
      - Nouveaux drapeaux CLI : `--use-ransac` et `--max-strain FLOAT`.
   5. `tests/test_ransac_and_deformation.py` :
      - 4 tests unitaires validant l'invariance rigide de Green-Lagrange, la détection d'élongation non rigide, le rejet RANSAC d'outliers et la protection du solveur.
+
+## 13. Rapport Comparatif & Stratégie d'Entraînement IA
+
+* **Documentation complète :** Voir `docs/COMPARATIVE_REPORT_AND_AI_TRAINING.md`.
+* **Points Clés :**
+  - **Avantage compétitif :** Décomposition SVD fermée $1000\times$ plus rapide que SMPLify-X (< 0.4 ms vs 1500 ms), 3 DoF verrouillés (Roll/Twist) sans gimbal lock, CPU pur sans GPU.
+  - **Stratégie d'entraînement :** Ne pas remplacer Kabsch, mais adopter le modèle **Solveur Hybride : $q_{\text{final}} = q_{\text{Kabsch}} \otimes \Delta q_{\text{neural}}$** pour corriger le foot-skating et les limites anatomiques.
