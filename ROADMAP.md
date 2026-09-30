@@ -100,3 +100,25 @@ Phase 5 : Interface de prévisualisation 3D Web (Three.js) avec affichage temps 
   - Rédaction et intégration de la feuille de route formelle `ROADMAP.md`.
   - Spécification des algorithmes algébriques complémentaires (Bézier SQUAD, Umeyama, RANSAC, Lie $\mathfrak{so}(3)$).
   - Validation architecturale du pipeline Vidéo 2D $\rightarrow$ .GLB T-Pose.
+
+## 6. Architecture Modulaire : Articulation HybrIK-X & mark-target
+
+```
+[ Étape 1 : Vision par Ordinateur (GPU / PyTorch) ]
+  Vidéo 2D (MP4) 
+      └──> HybrIK-X (Estimation de pose & maillage paramétrique SMPL-X)
+            └──> Génération de `res.pk` (sommets déformés, quaternions, transl)
+
+[ Étape 2 : Moteur de Retargeting Géométrique (CPU / NumPy) ]
+  Fichier `res.pk` + Modèle Cible `.glb` (en T-Pose)
+      └──> mark-target (Surface Sampling FPS + Poids LBS)
+            └──> Solveur Kabsch-Umeyama (SVD + Roll complet 6-DoF)
+            └──> Kinematics (Conversion espace Monde -> Hiérarchie Locale)
+            └──> Exporteur pygltflib
+                  └──> Fichier final `out_animated.glb`
+```
+
+### Pourquoi ce découplage est optimal :
+1. **Isolation des dépendances :** HybrIK-X nécessite PyTorch et CUDA. `mark-target` tourne en quelques millisecondes sur un simple CPU avec NumPy.
+2. **Agnosticisme de la source :** Tout autre estimateur de maillage peut remplacer HybrIK-X sans modifier une seule ligne du solveur de retargeting.
+3. **Fidélité biomécanique :** HybrIK-X résout la vision, `mark-target` garantit qu'aucun os ne vrille sur le rig cible.
