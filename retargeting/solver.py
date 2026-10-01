@@ -59,6 +59,40 @@ class MarkerRetargetSolver:
         else:
             self.children = children
 
+    def solve_frame(
+        self,
+        frame_markers: Dict[str, np.ndarray],
+        rest_markers: Dict[str, np.ndarray],
+        mapping: Dict[str, str],
+        use_umeyama: bool = False,
+        use_ransac: bool = False,
+        ransac_threshold: float = 0.04,
+        max_strain: Optional[float] = None,
+    ) -> Dict[str, np.ndarray]:
+        """
+        Résout une frame complète en mappant les marqueurs sources vers les os cibles.
+        """
+        positions_t: Dict[str, List[np.ndarray]] = {b: [] for b in self.rest_rotations}
+        positions_rest: Dict[str, List[np.ndarray]] = {b: [] for b in self.rest_rotations}
+
+        for src_marker, tgt_bone in mapping.items():
+            if tgt_bone in positions_t and src_marker in frame_markers and src_marker in rest_markers:
+                positions_t[tgt_bone].append(frame_markers[src_marker])
+                positions_rest[tgt_bone].append(rest_markers[src_marker])
+
+        pts_t = {b: np.array(v) for b, v in positions_t.items() if len(v) > 0}
+        pts_r = {b: np.array(v) for b, v in positions_rest.items() if len(v) > 0}
+
+        q_global, _ = self.solve_frame_multi_kabsch(
+            positions_t=pts_t,
+            positions_rest=pts_r,
+            use_umeyama=use_umeyama,
+            use_ransac=use_ransac,
+            ransac_threshold=ransac_threshold,
+            max_strain_threshold=max_strain,
+        )
+        return q_global
+
     def solve_frame_multi_kabsch(
         self,
         positions_t: Dict[str, np.ndarray],

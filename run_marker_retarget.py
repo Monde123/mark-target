@@ -1,14 +1,14 @@
-"""
-Script CLI Universel de Retargeting par Marqueurs
+"""Script CLI Universel de Retargeting par Marqueurs
 ==================================================
 Permet d'exécuter la méthode des marqueurs de façon découplée :
 - Sources supportées : .pk (HybrIK/SMPL-X), .bvh, .glb
 - Cibles supportées : .glb (Mixamo), .vrm (VRoid/VRM), .bvh
 
 Exemples d'utilisation :
-    python -m isolate.run_marker_retarget --source output/res.pk --source-type pk --target clara.glb --target-type mixamo --output out_markers.glb
-    python -m isolate.run_marker_retarget --source anim.bvh --source-type bvh --target avatar.vrm --target-type vrm --output out_avatar.vrm
+    python run_marker_retarget.py --source anim.bvh --source-type bvh --target out.bvh --target-type bvh --output res.bvh
+    python run_marker_retarget.py --source anim.bvh --source-type bvh --target avatar.glb --target-type mixamo --output out.glb
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,10 +19,39 @@ from core.geometry import quat_identity
 from retargeting.solver import MarkerRetargetSolver
 from retargeting.kinematics import global_to_local_hierarchy, apply_euler_correction_to_root
 from mappings.registry import MappingRegistry
-from adapters.hybrik_pk_adapter import HybrIKPKAdapter
 from adapters.bvh_adapter import BVHAdapter
-from adapters.gltf_mixamo_adapter import GLTFMixamoAdapter
-from adapters.vrm_adapter import VRMAdapter
+
+
+def get_target_adapter(target_type: str):
+    if target_type == "bvh":
+        return BVHAdapter()
+    elif target_type == "mixamo":
+        try:
+            from adapters.gltf_mixamo_adapter import GLTFMixamoAdapter
+            return GLTFMixamoAdapter()
+        except ImportError:
+            raise ImportError("Le support Mixamo (.glb) nécessite pygltflib : installez-le via `pip install pygltflib`")
+    elif target_type == "vrm":
+        try:
+            from adapters.vrm_adapter import VRMAdapter
+            return VRMAdapter()
+        except ImportError:
+            raise ImportError("Le support VRM (.vrm) nécessite pygltflib : installez-le via `pip install pygltflib`")
+    else:
+        raise ValueError(f"Format cible non supporté: {target_type}")
+
+
+def get_source_adapter(source_type: str):
+    if source_type == "bvh":
+        return BVHAdapter()
+    elif source_type == "pk":
+        try:
+            from adapters.hybrik_pk_adapter import HybrIKPKAdapter
+            return HybrIKPKAdapter()
+        except ImportError:
+            raise ImportError("Le format source .pk nécessite numpy et pickle.")
+    else:
+        raise ValueError(f"Format source non supporté: {source_type}")
 
 
 def main():
@@ -38,38 +67,25 @@ def main():
     parser.add_argument("--smoothing-factor", type=float, default=0.0, help="Facteur de lissage temporel Bezier/SLERP (0.0=aucun, 0.3=recommande)")
     parser.add_argument("--use-ransac", action="store_true", default=False, help="Active le filtrage robuste RANSAC contre les occlusions et marqueurs aberrants")
     parser.add_argument("--max-strain", type=float, default=None, help="Seuil d energie de deformation Green-Lagrange max tolerable avant fallback")
+
     args = parser.parse_args()
+
     if args.custom_mapping:
-        from mappings.registry import MappingRegistry
         MappingRegistry.register_from_json(args.custom_mapping, args.source_type, args.target_type)
-        print(f"[isolate] Mapping personnalise applique depuis {args.custom_mapping}")
+        print(f"[mark-target] Mapping personnalisé appliqué depuis {args.custom_mapping}")
 
-    print(f"[isolate] Chargement du squelette cible ({args.target_type}): {args.target}")
-    if args.target_type == "mixamo":
-        target_adapter = GLTFMixamoAdapter()
-    elif args.target_type == "vrm":
-        target_adapter = VRMAdapter()
-    elif args.target_type == "bvh":
-        target_adapter = BVHAdapter()
-    else:
-        raise ValueError(f"Format cible non supporté: {args.target_type}")
-
+    print(f"[mark-target] Chargement du squelette cible ({args.target_type}): {args.target}")
+    target_adapter = get_target_adapter(args.target_type)
     skeleton = target_adapter.load_skeleton(args.target)
-    print(f"[isolate] {len(skeleton.rest_rotations)} os détectés dans le squelette cible.")
+    print(f"[mark-target] {len(skeleton.rest_rotations)} os détectés dans le squelette cible.")
 
-    print(f"[isolate] Chargement de la source ({args.source_type}): {args.source}")
-    if args.source_type == "pk":
-        source_adapter = HybrIKPKAdapter()
-    elif args.source_type == "bvh":
-        source_adapter = BVHAdapter()
-    else:
-        raise ValueError(f"Format source non supporté: {args.source_type}")
-
+    print(f"[mark-target] Chargement de la source ({args.source_type}): {args.source}")
+    source_adapter = get_source_adapter(args.source_type)
     sequence = source_adapter.load(args.source)
-    print(f"[isolate] Source chargée : {len(sequence.frames_markers)} frames de marqueurs.")
+    print(f"[mark-target] Source chargée : {len(sequence.frames_markers)} frames de marqueurs.")
 
     mapping = MappingRegistry.get_mapping(args.source_type, args.target_type)
-    print(f"[isolate] Table de mapping résolue : {len(mapping)} correspondances.")
+    print(f"[mark-target] Table de mapping résolue : {len(mapping)} correspondances.")
 
     solver = MarkerRetargetSolver(
         rest_rotations=skeleton.rest_rotations,
@@ -79,51 +95,52 @@ def main():
     animation_clip = []
     n_frames = max(len(sequence.frames_markers), len(sequence.root_rotations or []))
 
-    for t in range(n_frames):
-        pts_t = sequence.frames_markers[t] if t < len(sequence.frames_markers) else {}
-        root_override = {}
-        if sequence.root_rotations and t < len(sequence.root_rotations):
-            root_override[skeleton.root_name] = sequence.root_rotations[t]
-
-        Q_global, _ = solver.solve_frame_multi_kabsch(
-            positions_t=pts_t,
-            positions_rest=sequence.rest_markers,
-            weights=sequence.weights,
-            root_rot_override=root_override,
+    for frame_idx in range(n_frames):
+        frame_markers = sequence.frames_markers[frame_idx] if frame_idx < len(sequence.frames_markers) else {}
+        global_rotations = solver.solve_frame(
+            frame_markers,
+            sequence.rest_markers or {},
+            mapping,
             use_umeyama=args.use_umeyama,
             use_ransac=args.use_ransac,
-            max_strain_threshold=args.max_strain,
+            max_strain=args.max_strain,
         )
 
-        Q_local = global_to_local_hierarchy(Q_global, skeleton.parents)
-        if args.root_x_degrees != 0.0:
-            Q_local = apply_euler_correction_to_root(
-                Q_local,
-                root_name=skeleton.root_name,
-                axis="x",
-                degrees=args.root_x_degrees,
-            )
+        root_rot = sequence.root_rotations[frame_idx] if sequence.root_rotations else None
+        if root_rot is not None:
+            if args.root_x_degrees != 0.0:
+                root_rot = apply_euler_correction_to_root(root_rot, args.root_x_degrees)
+            global_rotations[skeleton.root_name] = root_rot
+        elif args.root_x_degrees != 0.0:
+            current_root = global_rotations.get(skeleton.root_name, quat_identity())
+            global_rotations[skeleton.root_name] = apply_euler_correction_to_root(current_root, args.root_x_degrees)
 
-        root_trans = (
-            sequence.root_translations[t]
-            if sequence.root_translations is not None and t < len(sequence.root_translations)
-            else [0.0, 0.0, 0.0]
+        local_rotations = global_to_local_hierarchy(
+            global_rotations,
+            skeleton.parents,
         )
 
-        animation_clip.append({
-            "frame": t,
-            "bones": Q_local,
-            "root": root_trans,
-        })
+        frame_data: Dict[str, Any] = {"rotations": local_rotations}
+        if sequence.root_translations:
+            frame_data["root"] = sequence.root_translations[frame_idx]
+        animation_clip.append(frame_data)
 
-    print(f"[isolate] Exportation vers {args.output}...")
+    if args.smoothing_factor > 0.0:
+        from retargeting.smoothing import smooth_quaternion_trajectory
+        for bone_name in skeleton.parents.keys():
+            bone_trajectory = [f["rotations"].get(bone_name, quat_identity()) for f in animation_clip]
+            smoothed = smooth_quaternion_trajectory(bone_trajectory, args.smoothing_factor)
+            for f_idx, s_rot in enumerate(smoothed):
+                animation_clip[f_idx]["rotations"][bone_name] = s_rot
+        print(f"[mark-target] Lissage temporel SQUAD appliqué (facteur={args.smoothing_factor}).")
+
     target_adapter.export_animation(
         target_model_path=args.target,
         output_path=args.output,
         animation_clip=animation_clip,
         skeleton=skeleton,
     )
-    print(f"[isolate] Succès ! Fichier écrit : {args.output}")
+    print(f"[mark-target] Animation exportée avec succès -> {args.output}")
 
 
 if __name__ == "__main__":
