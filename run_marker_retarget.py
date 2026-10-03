@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import sys
 from typing import Dict, Any
+import numpy as np
 
 from core.geometry import quat_identity
 from retargeting.solver import MarkerRetargetSolver
@@ -93,7 +94,28 @@ def main():
     )
 
     animation_clip = []
-    n_frames = max(len(sequence.frames_markers), len(sequence.root_rotations or []))
+    root_rotations = sequence.root_rotations or []
+    root_translations = None
+    if sequence.root_translations is not None:
+        arr = np.asarray(sequence.root_translations, dtype=np.float64)
+        if arr.ndim == 1:
+            if arr.size == 3:
+                arr = arr.reshape(1, 3)
+            elif arr.size % 3 == 0:
+                arr = arr.reshape(-1, 3)
+        if arr.ndim != 2 or arr.shape[1] != 3:
+            raise ValueError(
+                f"[mark-target] root_translations invalide: attendu (n_frames, 3), reçu {arr.shape}"
+            )
+        root_translations = arr
+
+    n_frames = max(
+        len(sequence.frames_markers),
+        len(root_rotations),
+        0 if root_translations is None else int(root_translations.shape[0]),
+    )
+    if n_frames <= 0:
+        raise ValueError("[mark-target] Aucune frame exploitable dans la source.")
 
     for frame_idx in range(n_frames):
         frame_markers = sequence.frames_markers[frame_idx] if frame_idx < len(sequence.frames_markers) else {}
@@ -106,32 +128,43 @@ def main():
             max_strain=args.max_strain,
         )
 
-        root_rot = sequence.root_rotations[frame_idx] if sequence.root_rotations else None
+        root_rot = root_rotations[frame_idx] if frame_idx < len(root_rotations) else None
         if root_rot is not None:
-            if args.root_x_degrees != 0.0:
-                root_rot = apply_euler_correction_to_root(root_rot, args.root_x_degrees)
             global_rotations[skeleton.root_name] = root_rot
-        elif args.root_x_degrees != 0.0:
-            current_root = global_rotations.get(skeleton.root_name, quat_identity())
-            global_rotations[skeleton.root_name] = apply_euler_correction_to_root(current_root, args.root_x_degrees)
 
         local_rotations = global_to_local_hierarchy(
             global_rotations,
             skeleton.parents,
         )
+        if args.root_x_degrees != 0.0:
+            local_rotations = apply_euler_correction_to_root(
+                local_rotations,
+                root_name=skeleton.root_name,
+                axis="x",
+                degrees=args.root_x_degrees,
+            )
 
         frame_data: Dict[str, Any] = {"rotations": local_rotations}
-        if sequence.root_translations:
-            frame_data["root"] = sequence.root_translations[frame_idx]
+        if root_translations is not None:
+            idx = frame_idx if frame_idx < root_translations.shape[0] else root_translations.shape[0] - 1
+            frame_data["root"] = root_translations[idx].copy()
         animation_clip.append(frame_data)
 
     if args.smoothing_factor > 0.0:
-        from retargeting.smoothing import smooth_quaternion_trajectory
+        from retargeting.smoothing import smooth_quaternion_trajectory, smooth_translation_trajectory
+
         for bone_name in skeleton.parents.keys():
             bone_trajectory = [f["rotations"].get(bone_name, quat_identity()) for f in animation_clip]
             smoothed = smooth_quaternion_trajectory(bone_trajectory, args.smoothing_factor)
             for f_idx, s_rot in enumerate(smoothed):
                 animation_clip[f_idx]["rotations"][bone_name] = s_rot
+
+        if root_translations is not None:
+            root_traj = [f.get("root", np.zeros(3, dtype=np.float64)) for f in animation_clip]
+            window_size = 3 if args.smoothing_factor < 0.5 else 5
+            smoothed_root = smooth_translation_trajectory(root_traj, window_size=window_size)
+            for f_idx, t_root in enumerate(smoothed_root):
+                animation_clip[f_idx]["root"] = np.asarray(t_root, dtype=np.float64)
         print(f"[mark-target] Lissage temporel SQUAD appliqué (facteur={args.smoothing_factor}).")
 
     target_adapter.export_animation(

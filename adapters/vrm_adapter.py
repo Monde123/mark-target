@@ -13,7 +13,8 @@ from typing import Dict, List, Optional, Tuple, Any
 from pygltflib import GLTF2
 
 from adapters.base import TargetAdapter, TargetSkeleton
-from core.geometry import quat_identity, quat_mul, quat_normalize
+from adapters.gltf_animation_builder import export_rotation_animation_to_gltf
+from core.geometry import quat_identity, quat_mul
 from mappings.standard_humanoid import VRM_TO_STANDARD
 
 
@@ -69,25 +70,23 @@ class VRMAdapter(TargetAdapter):
         raw_names: Dict[str, str] = {}
 
         for n_idx, vrm_bone in node_to_vrm_bone.items():
-            std_name = VRM_TO_STANDARD.get(vrm_bone, vrm_bone)
-            Q_rest[std_name] = global_pose(n_idx)
-            raw_names[std_name] = nodes[n_idx].name or f"node_{n_idx}"
+            Q_rest[vrm_bone] = global_pose(n_idx)
+            raw_names[vrm_bone] = nodes[n_idx].name or f"node_{n_idx}"
 
             p_idx = parent_of_idx.get(n_idx)
             while p_idx is not None and p_idx not in node_to_vrm_bone:
                 p_idx = parent_of_idx.get(p_idx)
 
             if p_idx is not None and p_idx in node_to_vrm_bone:
-                parent_vrm = node_to_vrm_bone[p_idx]
-                parents[std_name] = VRM_TO_STANDARD.get(parent_vrm, parent_vrm)
+                parents[vrm_bone] = node_to_vrm_bone[p_idx]
             else:
-                parents[std_name] = None
+                parents[vrm_bone] = None
 
         return TargetSkeleton(
             rest_rotations=Q_rest,
             parents=parents,
             raw_names=raw_names,
-            root_name="Hips",
+            root_name="hips",
             fps=30.0,
         )
 
@@ -101,5 +100,27 @@ class VRMAdapter(TargetAdapter):
     ) -> None:
         """Exporte l'animation sur le modèle VRM."""
         gltf = GLTF2().load(target_model_path)
-        # Écriture des canaux de rotation dans le conteneur VRM (glTF)
-        gltf.save(output_path)
+        node_map: Dict[str, int] = {}
+        for idx, node in enumerate(gltf.nodes or []):
+            if node.name:
+                node_map[node.name] = idx
+
+        # Les clés d'animation pour VRM suivent les noms humanoid (ex: hips, spine...)
+        # raw_names relie ces clés au vrai nom de node glTF.
+        raw_names = skeleton.raw_names or {}
+
+        def node_lookup(bone_name: str) -> Optional[int]:
+            raw = raw_names.get(bone_name)
+            if raw and raw in node_map:
+                return node_map[raw]
+            return node_map.get(bone_name)
+
+        export_rotation_animation_to_gltf(
+            gltf=gltf,
+            output_path=output_path,
+            animation_clip=animation_clip,
+            skeleton_fps=skeleton.fps,
+            bone_names=list(skeleton.parents.keys()),
+            node_lookup=node_lookup,
+            animation_name="marker_animation",
+        )

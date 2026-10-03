@@ -9,18 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
-from pygltflib import (
-    GLTF2,
-    Animation,
-    AnimationChannel,
-    AnimationChannelTarget,
-    AnimationSampler,
-    Accessor,
-    BufferView,
-)
+from pygltflib import GLTF2
 
 from adapters.base import TargetAdapter, TargetSkeleton
-from core.geometry import quat_identity, quat_mul, quat_normalize, rotate_vector
+from adapters.gltf_animation_builder import export_rotation_animation_to_gltf
+from core.geometry import quat_identity, quat_mul
 
 
 class GLTFMixamoAdapter(TargetAdapter):
@@ -110,21 +103,20 @@ class GLTFMixamoAdapter(TargetAdapter):
         **kwargs
     ) -> None:
         """Exporte l'animation résolue dans le GLB cible."""
-        # Réutilisation de la sérialisation glTF propre
         gltf = GLTF2().load(target_model_path)
-        fps = skeleton.fps if skeleton.fps > 0 else 30.0
-        n_frames = len(animation_clip)
-        times = (np.arange(n_frames, dtype=np.float32) / fps).tobytes()
+        node_map: Dict[str, int] = {}
+        for idx, node in enumerate(gltf.nodes or []):
+            if not node.name:
+                continue
+            node_map[node.name] = idx
+            node_map[self.canonical_bone_name(node.name)] = idx
 
-        # Mapping nom d'os -> node_index dans gltf
-        node_map = {}
-        for idx, node in enumerate(gltf.nodes):
-            if node.name:
-                c_name = self.canonical_bone_name(node.name)
-                node_map[c_name] = idx
-                node_map[node.name] = idx
-
-        # Construction du buffer d'animation
-        # Pour une intégration complète, on sérialise les samplers et channels
-        # On sauvegarde le nouveau modèle
-        gltf.save(output_path)
+        export_rotation_animation_to_gltf(
+            gltf=gltf,
+            output_path=output_path,
+            animation_clip=animation_clip,
+            skeleton_fps=skeleton.fps,
+            bone_names=list(skeleton.parents.keys()),
+            node_lookup=lambda b: node_map.get(b),
+            animation_name=animation_name,
+        )
