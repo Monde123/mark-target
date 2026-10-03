@@ -17,7 +17,7 @@ from typing import Dict, Any
 
 from core.geometry import quat_identity
 from retargeting.solver import MarkerRetargetSolver
-from retargeting.kinematics import global_to_local_hierarchy, apply_euler_correction_to_root
+from retargeting.kinematics import global_to_local_hierarchy, apply_axis_correction_to_quaternion
 from mappings.registry import MappingRegistry
 from adapters.bvh_adapter import BVHAdapter
 
@@ -93,7 +93,10 @@ def main():
     )
 
     animation_clip = []
-    n_frames = max(len(sequence.frames_markers), len(sequence.root_rotations or []))
+    root_rotations = sequence.root_rotations or []
+    root_translations = sequence.root_translations
+    n_root_trans = len(root_translations) if root_translations is not None else 0
+    n_frames = max(len(sequence.frames_markers), len(root_rotations), n_root_trans)
 
     for frame_idx in range(n_frames):
         frame_markers = sequence.frames_markers[frame_idx] if frame_idx < len(sequence.frames_markers) else {}
@@ -106,14 +109,18 @@ def main():
             max_strain=args.max_strain,
         )
 
-        root_rot = sequence.root_rotations[frame_idx] if sequence.root_rotations else None
+        root_rot = root_rotations[min(frame_idx, len(root_rotations) - 1)] if root_rotations else None
         if root_rot is not None:
             if args.root_x_degrees != 0.0:
-                root_rot = apply_euler_correction_to_root(root_rot, args.root_x_degrees)
+                root_rot = apply_axis_correction_to_quaternion(root_rot, axis="x", degrees=args.root_x_degrees)
             global_rotations[skeleton.root_name] = root_rot
         elif args.root_x_degrees != 0.0:
             current_root = global_rotations.get(skeleton.root_name, quat_identity())
-            global_rotations[skeleton.root_name] = apply_euler_correction_to_root(current_root, args.root_x_degrees)
+            global_rotations[skeleton.root_name] = apply_axis_correction_to_quaternion(
+                current_root,
+                axis="x",
+                degrees=args.root_x_degrees,
+            )
 
         local_rotations = global_to_local_hierarchy(
             global_rotations,
@@ -121,8 +128,9 @@ def main():
         )
 
         frame_data: Dict[str, Any] = {"rotations": local_rotations}
-        if sequence.root_translations:
-            frame_data["root"] = sequence.root_translations[frame_idx]
+        if root_translations is not None and len(root_translations) > 0:
+            root_t_idx = min(frame_idx, len(root_translations) - 1)
+            frame_data["root"] = root_translations[root_t_idx]
         animation_clip.append(frame_data)
 
     if args.smoothing_factor > 0.0:

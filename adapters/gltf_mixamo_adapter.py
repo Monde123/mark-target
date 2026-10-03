@@ -8,19 +8,12 @@ Adaptateur glTF / GLB spécifique pour avatars Mixamo:
 from __future__ import annotations
 
 import numpy as np
-from typing import Dict, List, Optional, Tuple, Any
-from pygltflib import (
-    GLTF2,
-    Animation,
-    AnimationChannel,
-    AnimationChannelTarget,
-    AnimationSampler,
-    Accessor,
-    BufferView,
-)
+from typing import Dict, Optional, Any, List
+from pygltflib import GLTF2
 
 from adapters.base import TargetAdapter, TargetSkeleton
-from core.geometry import quat_identity, quat_mul, quat_normalize, rotate_vector
+from adapters.gltf_animation_utils import export_quaternion_animation_to_gltf
+from core.geometry import quat_identity, quat_mul
 
 
 class GLTFMixamoAdapter(TargetAdapter):
@@ -36,11 +29,10 @@ class GLTFMixamoAdapter(TargetAdapter):
     def load_skeleton(self, target_model_path: str, **kwargs) -> TargetSkeleton:
         """Lit la bind pose et la hiérarchie directement depuis le fichier GLB."""
         gltf = GLTF2().load(target_model_path)
-        nodes = gltf.nodes
+        nodes = gltf.nodes or []
 
         node_name: Dict[int, str] = {}
         node_local_quat: Dict[int, np.ndarray] = {}
-        node_local_trans: Dict[int, np.ndarray] = {}
 
         for i, node in enumerate(nodes):
             name = node.name or f"node_{i}"
@@ -51,7 +43,6 @@ class GLTFMixamoAdapter(TargetAdapter):
             else:
                 x, y, z, w = node.rotation
                 node_local_quat[i] = np.array([w, x, y, z], dtype=np.float64)
-            node_local_trans[i] = np.array(node.translation) if node.translation else np.zeros(3)
 
         parent_of_idx: Dict[int, int] = {}
         for i, node in enumerate(nodes):
@@ -61,7 +52,7 @@ class GLTFMixamoAdapter(TargetAdapter):
         if not gltf.skins:
             raise ValueError(f"Aucun skin trouvé dans le fichier {target_model_path}")
 
-        joint_indices = sorted({j for skin in gltf.skins for j in skin.joints})
+        joint_indices = sorted({j for skin in gltf.skins for j in (skin.joints or [])})
 
         cache_q: Dict[int, np.ndarray] = {}
 
@@ -69,21 +60,21 @@ class GLTFMixamoAdapter(TargetAdapter):
             if i in cache_q:
                 return cache_q[i]
             if i not in parent_of_idx:
-                q = node_local_quat[i]
+                q = node_local_quat.get(i, quat_identity())
             else:
                 q_parent = global_pose(parent_of_idx[i])
-                q = quat_mul(q_parent, node_local_quat[i])
+                q = quat_mul(q_parent, node_local_quat.get(i, quat_identity()))
             cache_q[i] = q
             return q
 
-        Q_rest: Dict[str, np.ndarray] = {}
+        q_rest: Dict[str, np.ndarray] = {}
         parents: Dict[str, Optional[str]] = {}
         canonical_to_raw: Dict[str, str] = {}
 
         for j_idx in joint_indices:
             c_name = node_name[j_idx]
             raw_name = nodes[j_idx].name or c_name
-            Q_rest[c_name] = global_pose(j_idx)
+            q_rest[c_name] = global_pose(j_idx)
             canonical_to_raw[c_name] = raw_name
 
             p_idx = parent_of_idx.get(j_idx)
@@ -92,11 +83,15 @@ class GLTFMixamoAdapter(TargetAdapter):
             else:
                 parents[c_name] = None
 
+        root_name = "mixamorig:Hips"
+        if root_name not in q_rest and q_rest:
+            root_name = next((bone for bone, p in parents.items() if p is None), next(iter(q_rest.keys())))
+
         return TargetSkeleton(
-            rest_rotations=Q_rest,
+            rest_rotations=q_rest,
             parents=parents,
             raw_names=canonical_to_raw,
-            root_name="mixamorig:Hips",
+            root_name=root_name,
             fps=30.0,
         )
 
@@ -109,22 +104,22 @@ class GLTFMixamoAdapter(TargetAdapter):
         animation_name: str = "marker_animation",
         **kwargs
     ) -> None:
-        """Exporte l'animation résolue dans le GLB cible."""
-        # Réutilisation de la sérialisation glTF propre
+        """Exporte l'animation résolue dans le GLB/GLTF cible."""
         gltf = GLTF2().load(target_model_path)
-        fps = skeleton.fps if skeleton.fps > 0 else 30.0
-        n_frames = len(animation_clip)
-        times = (np.arange(n_frames, dtype=np.float32) / fps).tobytes()
 
-        # Mapping nom d'os -> node_index dans gltf
-        node_map = {}
-        for idx, node in enumerate(gltf.nodes):
-            if node.name:
-                c_name = self.canonical_bone_name(node.name)
-                node_map[c_name] = idx
-                node_map[node.name] = idx
+        node_map: Dict[str, int] = {}
+        for idx, node in enumerate(gltf.nodes or []):
+            if not node.name:
+                continue
+            canonical = self.canonical_bone_name(node.name)
+            node_map[canonical] = idx
+            node_map[node.name] = idx
 
-        # Construction du buffer d'animation
-        # Pour une intégration complète, on sérialise les samplers et channels
-        # On sauvegarde le nouveau modèle
-        gltf.save(output_path)
+        export_quaternion_animation_to_gltf(
+            gltf=gltf,
+            output_path=output_path,
+            animation_clip=animation_clip,
+            skeleton=skeleton,
+            node_map=node_map,
+            animation_name=animation_name,
+        )

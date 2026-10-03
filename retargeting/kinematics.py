@@ -95,3 +95,29 @@ def apply_euler_correction_to_root(
     res = dict(local_rotations)
     res[root_name] = quat_normalize(quat_mul(q_corr, res[root_name]))
     return res
+
+
+def apply_axis_correction_to_quaternion(
+    q: np.ndarray,
+    axis: str = "x",
+    degrees: float = 0.0,
+) -> np.ndarray:
+    """Applique une correction d'angle autour d'un axe à un quaternion [w, x, y, z]."""
+    if q is None or abs(degrees) < 1e-6:
+        return q
+
+    rad = np.radians(degrees)
+    half = rad * 0.5
+    s = np.sin(half)
+    c = np.cos(half)
+
+    if axis.lower() == "x":
+        q_corr = np.array([c, s, 0.0, 0.0], dtype=np.float64)
+    elif axis.lower() == "y":
+        q_corr = np.array([c, 0.0, s, 0.0], dtype=np.float64)
+    elif axis.lower() == "z":
+        q_corr = np.array([c, 0.0, 0.0, s], dtype=np.float64)
+    else:
+        raise ValueError(f"Axe non reconnu: {axis}")
+
+    return quat_normalize(quat_mul(q_corr, q))

@@ -8,6 +8,7 @@ from retargeting.kinematics import (
     global_to_local_hierarchy,
     local_to_global_hierarchy,
     apply_euler_correction_to_root,
+    apply_axis_correction_to_quaternion,
 )
 
 __all__ = [
@@ -15,4 +16,5 @@ __all__ = [
     "global_to_local_hierarchy",
     "local_to_global_hierarchy",
     "apply_euler_correction_to_root",
+    "apply_axis_correction_to_quaternion",
 ]

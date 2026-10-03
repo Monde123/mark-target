@@ -20,6 +20,7 @@ class TargetSkeleton:
     raw_names: Optional[Dict[str, str]] = None  # {nom_canonique: nom_dans_le_fichier}
     root_name: str = "Hips"
     fps: float = 30.0
+    metadata: Optional[Dict[str, Any]] = None
 
 
 @dataclass

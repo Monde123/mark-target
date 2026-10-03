@@ -27,6 +27,7 @@ from isolate.retargeting import (
     global_to_local_hierarchy,
     local_to_global_hierarchy,
     apply_euler_correction_to_root,
+    apply_axis_correction_to_quaternion,
 )
 from isolate.mappings import MappingRegistry
 from isolate.adapters import (
@@ -56,6 +57,7 @@ __all__ = [
     "global_to_local_hierarchy",
     "local_to_global_hierarchy",
     "apply_euler_correction_to_root",
+    "apply_axis_correction_to_quaternion",
     "MappingRegistry",
     "SourceAdapter",
     "TargetAdapter",
