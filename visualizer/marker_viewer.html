@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Marker Observer & Diagnostic System - MarkTarget</title>
+    <style>
+        :root {
+            --bg-color: #0f1117;
+            --panel-bg: rgba(22, 27, 34, 0.92);
+            --border-color: #30363d;
+            --accent-cyan: #58a6ff;
+            --accent-green: #3fb950;
+            --accent-magenta: #bc8cff;
+            --accent-yellow: #d29922;
+            --accent-red: #f85149;
+            --text-primary: #e6edf3;
+            --text-secondary: #8b949e;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-primary);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Top header bar */
+        header {
+            position: absolute;
+            top: 16px;
+            left: 20px;
+            z-index: 10;
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 18px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+        }
+
+        header h1 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: rgba(88, 166, 255, 0.15);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(88, 166, 255, 0.3);
+        }
+
+        /* File loader button */
+        .btn {
+            background: #21262d;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 6px 14px;
+            font-size: 12px;
+            font-weight: 500;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background: #30363d;
+            border-color: #8b949e;
+        }
+
+        .btn-primary {
+            background: #238636;
+            border-color: rgba(240, 246, 252, 0.1);
+            color: #ffffff;
+        }
+
+        .btn-primary:hover {
+            background: #2ea043;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        /* Diagnostic Panel on right */
+        #diagnostic-panel {
+            position: absolute;
+            top: 16px;
+            right: 20px;
+            width: 320px;
+            max-height: calc(100vh - 120px);
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-size: 13px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 6px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+            margin-bottom: 4px;
+        }
+
+        .metric-label {
+            color: var(--text-secondary);
+        }
+
+        .metric-val {
+            font-weight: 600;
+            font-family: monospace;
+            color: var(--text-primary);
+        }
+
+        .legend-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            font-size: 11px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        /* Bottom Player Controls */
+        #controls-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(880px, calc(100vw - 40px));
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px 20px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .timeline-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+        }
+
+        #scrubber {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: #21262d;
+            outline: none;
+            cursor: pointer;
+        }
+
+        #scrubber::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            cursor: pointer;
+            border: 2px solid #ffffff;
+            box-shadow: 0 0 6px rgba(88, 166, 255, 0.8);
+        }
+
+        .time-label {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+            min-width: 110px;
+            text-align: right;
+        }
+
+        .playback-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .btn-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toggle-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+        }
+
+        .toggle-label input {
+            cursor: pointer;
+        }
+
+        /* Drag & Drop overlay */
+        #drop-zone {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 17, 23, 0.85);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            border: 3px dashed var(--accent-cyan);
+            color: var(--accent-cyan);
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        select {
+            background: #21262d;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 100%;
+            outline: none;
+        }
+    </style>
+    <!-- Three.js + OrbitControls -->
+    <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+    <div id="drop-zone">Déposez votre fichier JSON d'observation ici (.json)</div>
+    <div id="canvas-container"></div>
+
+    <header>
+        <h1>
+            <span>🔭</span>
+            <span>Marker Observer 3D</span>
+        </h1>
+        <span class="badge" id="badge-source">Aucune donnée chargée</span>
+        <label for="file-input" class="btn btn-primary">
+            📁 Ouvrir JSON
+        </label>
+        <input type="file" id="file-input" accept=".json">
+    </header>
+
+    <div id="diagnostic-panel">
+        <div class="panel-title">Informations du Clip</div>
+        <div class="metric-row">
+            <span class="metric-label">Source :</span>
+            <span class="metric-val" id="info-source">-</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Frames / FPS :</span>
+            <span class="metric-val" id="info-frames">-</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Nombre d'os :</span>
+            <span class="metric-val" id="info-bones">-</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Architecture :</span>
+            <span class="metric-val" style="color: var(--accent-green);">4-Marker Tetrahedrons (3 DoF)</span>
+        </div>
+
+        <div class="panel-title" style="margin-top: 8px;">Sélection de l'os</div>
+        <select id="bone-select">
+            <option value="all">-- Observer tous les os --</option>
+        </select>
+
+        <div id="bone-details" style="display: none;">
+            <div class="metric-row">
+                <span class="metric-label">Rigidité max deviation :</span>
+                <span class="metric-val" id="bone-rigidity">-</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Vitesse max :</span>
+                <span class="metric-val" id="bone-speed">-</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">Accélération max :</span>
+                <span class="metric-val" id="bone-accel">-</span>
+            </div>
+            <div class="metric-row">
+                <span class="metric-label">DoF SVD :</span>
+                <span class="metric-val" style="color: var(--accent-cyan);">3 / 3 (Rang plein)</span>
+            </div>
+        </div>
+
+        <div class="panel-title" style="margin-top: 8px;">Légende des Marqueurs</div>
+        <div class="legend-grid">
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #00d2ff;"></div>
+                <span>M0: Pivot Joint</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #ff00ff;"></div>
+                <span>M1: Extrémité</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #00ff66;"></div>
+                <span>M2: Plan Flexion</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #ffcc00;"></div>
+                <span>M3: Axe Twist</span>
+            </div>
+        </div>
+
+        <div class="panel-title" style="margin-top: 8px;">Options d'Affichage</div>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-skeleton" checked>
+                <span>Afficher Squelette Filaire</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-markers" checked>
+                <span>Afficher Sphères Marqueurs</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-cages" checked>
+                <span>Afficher Cages Tétraédriques</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-axes" checked>
+                <span>Afficher Trièdres RGB Locaux</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-trails" checked>
+                <span>Afficher Trajectoires (Trails)</span>
+            </label>
+        </div>
+    </div>
+
+    <div id="controls-bar">
+        <div class="timeline-container">
+            <input type="range" id="scrubber" min="0" max="0" value="0">
+            <span class="time-label" id="time-display">0 / 0 (0.00s)</span>
+        </div>
+        <div class="playback-row">
+            <div class="btn-group">
+                <button class="btn" id="btn-play">▶ Lecture</button>
+                <button class="btn" id="btn-step-prev">⏮ -1 Frame</button>
+                <button class="btn" id="btn-step-next">⏭ +1 Frame</button>
+                <button class="btn" id="btn-reset-cam">🎥 Reset Cam</button>
+            </div>
+            <div class="btn-group">
+                <span style="font-size: 11px; color: var(--text-secondary);">Vitesse :</span>
+                <button class="btn" id="spd-025">0.25x</button>
+                <button class="btn" id="spd-05">0.5x</button>
+                <button class="btn btn-primary" id="spd-1">1x</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State ---
+        let observationData = null;
+        let currentFrame = 0;
+        let isPlaying = false;
+        let playSpeed = 1.0;
+        let animationFrameId = null;
+        let lastTimestamp = performance.now();
+        let frameAccumulator = 0;
+
+        // Three.js Core
+        let scene, camera, renderer, controls;
+        let skeletonLines = null;
+        let markerMeshGroup = new THREE.Group();
+        let cageLinesGroup = new THREE.Group();
+        let axesGroup = new THREE.Group();
+        let trailsGroup = new THREE.Group();
+
+        // Trails buffer
+        const MAX_TRAIL_LENGTH = 30;
+        let markerHistory = {};
+
+        // --- Init Three.js Scene ---
+        function initScene() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0f1117);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 100);
+            camera.position.set(0, 1.2, 3.5);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.target.set(0, 0.9, 0);
+
+            // Lights
+            const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambient);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(5, 10, 7);
+            scene.add(dirLight);
+
+            // Infinite Grid
+            const grid = new THREE.GridHelper(10, 20, 0x30363d, 0x1f242c);
+            grid.position.y = 0;
+            scene.add(grid);
+
+            // Coordinate origin gizmo
+            const axesHelper = new THREE.AxesHelper(0.3);
+            scene.add(axesHelper);
+
+            // Groups
+            scene.add(markerMeshGroup);
+            scene.add(cageLinesGroup);
+            scene.add(axesGroup);
+            scene.add(trailsGroup);
+
+            window.addEventListener('resize', onWindowResize);
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate(timestamp = performance.now()) {
+            animationFrameId = requestAnimationFrame(animate);
+
+            const dt = (timestamp - lastTimestamp) / 1000;
+            lastTimestamp = timestamp;
+
+            if (isPlaying && observationData && observationData.frames.length > 0) {
+                frameAccumulator += dt * playSpeed * observationData.metadata.fps;
+                if (frameAccumulator >= 1.0) {
+                    const step = Math.floor(frameAccumulator);
+                    frameAccumulator -= step;
+                    currentFrame = (currentFrame + step) % observationData.frames.length;
+                    document.getElementById('scrubber').value = currentFrame;
+                    renderFrame(currentFrame);
+                }
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // --- Render Specific Frame ---
+        function renderFrame(frameIdx) {
+            if (!observationData || frameIdx >= observationData.frames.length) return;
+
+            const frameData = observationData.frames[frameIdx];
+            const axesData = observationData.axes ? observationData.axes[frameIdx] : null;
+            const selectedBone = document.getElementById('bone-select').value;
+
+            // Clear previous dynamically created elements
+            clearGroup(markerMeshGroup);
+            clearGroup(cageLinesGroup);
+            clearGroup(axesGroup);
+
+            // Update Time display
+            const timeSec = (frameIdx / observationData.metadata.fps).toFixed(2);
+            document.getElementById('time-display').innerText = 
+                `${frameIdx + 1} / ${observationData.frames.length} (${timeSec}s)`;
+
+            const showSkeleton = document.getElementById('toggle-skeleton').checked;
+            const showMarkers = document.getElementById('toggle-markers').checked;
+            const showCages = document.getElementById('toggle-cages').checked;
+            const showAxes = document.getElementById('toggle-axes').checked;
+            const showTrails = document.getElementById('toggle-trails').checked;
+
+            // Marker Materials
+            const matM0 = new THREE.MeshStandardMaterial({ color: 0x00d2ff, roughness: 0.3 }); // Cyan Joint
+            const matM1 = new THREE.MeshStandardMaterial({ color: 0xff00ff, roughness: 0.3 }); // Magenta Extremity
+            const matM2 = new THREE.MeshStandardMaterial({ color: 0x00ff66, roughness: 0.3 }); // Green Flexion
+            const matM3 = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.3 }); // Yellow Twist
+            const sphereGeomM0 = new THREE.SphereGeometry(0.016, 16, 16);
+            const sphereGeomSmall = new THREE.SphereGeometry(0.011, 16, 16);
+
+            // 1. Draw Skeleton Lines (Parent M0 -> Child M0)
+            if (showSkeleton && observationData.bones_hierarchy) {
+                const skeletonPoints = [];
+                for (const [bone, parent] of Object.entries(observationData.bones_hierarchy)) {
+                    if (parent && frameData[parent] && frameData[bone]) {
+                        if (selectedBone !== 'all' && bone !== selectedBone && parent !== selectedBone) continue;
+                        const pParent = frameData[parent][0];
+                        const pChild = frameData[bone][0];
+                        skeletonPoints.push(new THREE.Vector3(pParent[0], pParent[1], pParent[2]));
+                        skeletonPoints.push(new THREE.Vector3(pChild[0], pChild[1], pChild[2]));
+                    }
+                }
+                if (skeletonPoints.length > 0) {
+                    const skelGeom = new THREE.BufferGeometry().setFromPoints(skeletonPoints);
+                    const skelMat = new THREE.LineBasicMaterial({ color: 0x58a6ff, linewidth: 2, transparent: true, opacity: 0.7 });
+                    const skelLine = new THREE.LineSegments(skelGeom, skelMat);
+                    markerMeshGroup.add(skelLine);
+                }
+            }
+
+            // 2. Draw 4 Markers and Tetrahedrons per Bone
+            for (const [bone, pts] of Object.entries(frameData)) {
+                if (selectedBone !== 'all' && bone !== selectedBone) continue;
+                if (!pts || pts.length < 4) continue;
+
+                const m0 = new THREE.Vector3(pts[0][0], pts[0][1], pts[0][2]);
+                const m1 = new THREE.Vector3(pts[1][0], pts[1][1], pts[1][2]);
+                const m2 = new THREE.Vector3(pts[2][0], pts[2][1], pts[2][2]);
+                const m3 = new THREE.Vector3(pts[3][0], pts[3][1], pts[3][2]);
+
+                // Store trails
+                if (!markerHistory[bone]) markerHistory[bone] = [];
+                markerHistory[bone].push(m0.clone());
+                if (markerHistory[bone].length > MAX_TRAIL_LENGTH) {
+                    markerHistory[bone].shift();
+                }
+
+                if (showMarkers) {
+                    const meshM0 = new THREE.Mesh(sphereGeomM0, matM0);
+                    meshM0.position.copy(m0);
+                    markerMeshGroup.add(meshM0);
+
+                    const meshM1 = new THREE.Mesh(sphereGeomSmall, matM1);
+                    meshM1.position.copy(m1);
+                    markerMeshGroup.add(meshM1);
+
+                    const meshM2 = new THREE.Mesh(sphereGeomSmall, matM2);
+                    meshM2.position.copy(m2);
+                    markerMeshGroup.add(meshM2);
+
+                    const meshM3 = new THREE.Mesh(sphereGeomSmall, matM3);
+                    meshM3.position.copy(m3);
+                    markerMeshGroup.add(meshM3);
+                }
+
+                // Tetrahedron wireframe
+                if (showCages) {
+                    const cagePoints = [
+                        m0, m1,  m0, m2,  m0, m3,
+                        m1, m2,  m2, m3,  m3, m1
+                    ];
+                    const cageGeom = new THREE.BufferGeometry().setFromPoints(cagePoints);
+                    const cageMat = new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.45 });
+                    cageLinesGroup.add(new THREE.LineSegments(cageGeom, cageMat));
+                }
+
+                // 3. Draw Local Frame RGB Axes
+                if (showAxes && axesData && axesData[bone]) {
+                    const ax = axesData[bone];
+                    const origin = new THREE.Vector3(ax.origin[0], ax.origin[1], ax.origin[2]);
+                    const len = 0.08;
+
+                    // X: Red (longitudinal)
+                    const dirX = new THREE.Vector3(ax.axis_x[0], ax.axis_x[1], ax.axis_x[2]);
+                    axesGroup.add(new THREE.ArrowHelper(dirX, origin, len, 0xff3b30, 0.02, 0.015));
+
+                    // Y: Green (flexion)
+                    const dirY = new THREE.Vector3(ax.axis_y[0], ax.axis_y[1], ax.axis_y[2]);
+                    axesGroup.add(new THREE.ArrowHelper(dirY, origin, len, 0x34c759, 0.02, 0.015));
+
+                    // Z: Blue (twist)
+                    const dirZ = new THREE.Vector3(ax.axis_z[0], ax.axis_z[1], ax.axis_z[2]);
+                    axesGroup.add(new THREE.ArrowHelper(dirZ, origin, len, 0x007aff, 0.02, 0.015));
+                }
+            }
+
+            // 4. Render Trails
+            clearGroup(trailsGroup);
+            if (showTrails) {
+                for (const [bone, pts] of Object.entries(markerHistory)) {
+                    if (selectedBone !== 'all' && bone !== selectedBone) continue;
+                    if (pts.length < 2) continue;
+                    const trailGeom = new THREE.BufferGeometry().setFromPoints(pts);
+                    const trailMat = new THREE.LineBasicMaterial({ color: 0x00d2ff, transparent: true, opacity: 0.35 });
+                    trailsGroup.add(new THREE.Line(trailGeom, trailMat));
+                }
+            }
+        }
+
+        function clearGroup(group) {
+            while (group.children.length > 0) {
+                const obj = group.children[0];
+                if (obj.geometry) obj.geometry.dispose();
+                group.remove(obj);
+            }
+        }
+
+        // --- Load JSON Payload ---
+        function loadJSON(jsonString) {
+            try {
+                observationData = JSON.parse(jsonString);
+                currentFrame = 0;
+                markerHistory = {};
+
+                // Update UI Header
+                document.getElementById('badge-source').innerText = `${observationData.metadata.source_name}`;
+                document.getElementById('info-source').innerText = observationData.metadata.source_name;
+                document.getElementById('info-frames').innerText = `${observationData.metadata.frame_count} (${observationData.metadata.fps} fps)`;
+                document.getElementById('info-bones').innerText = `${observationData.metadata.bone_count}`;
+
+                // Populate Bone Select
+                const select = document.getElementById('bone-select');
+                select.innerHTML = '<option value="all">-- Observer tous les os --</option>';
+                for (const bone of Object.keys(observationData.bones_hierarchy)) {
+                    const opt = document.createElement('option');
+                    opt.value = bone;
+                    opt.innerText = bone;
+                    select.appendChild(opt);
+                }
+
+                // Setup Scrubber
+                const scrubber = document.getElementById('scrubber');
+                scrubber.min = 0;
+                scrubber.max = observationData.metadata.frame_count - 1;
+                scrubber.value = 0;
+
+                renderFrame(0);
+                centerCameraOnSkeleton();
+            } catch (err) {
+                alert("Erreur lors de la lecture du fichier JSON: " + err.message);
+            }
+        }
+
+        function centerCameraOnSkeleton() {
+            if (!observationData || observationData.frames.length === 0) return;
+            const f0 = observationData.frames[0];
+            const box = new THREE.Box3();
+            for (const pts of Object.values(f0)) {
+                for (const p of pts) {
+                    box.expandByPoint(new THREE.Vector3(p[0], p[1], p[2]));
+                }
+            }
+            if (!box.isEmpty()) {
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+                controls.target.copy(center);
+                camera.position.set(center.x, center.y + 0.3, center.z + 2.5);
+                controls.update();
+            }
+        }
+
+        // --- Event Listeners ---
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (evt) => loadJSON(evt.target.result);
+                reader.readAsText(file);
+            }
+        });
+
+        const dropZone = document.getElementById('drop-zone');
+        window.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.display = 'flex'; });
+        window.addEventListener('dragleave', (e) => { if (e.clientX <= 0 || e.clientY <= 0) dropZone.style.display = 'none'; });
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.style.display = 'none';
+            const file = e.dataTransfer.files[0];
+            if (file && file.name.endsWith('.json')) {
+                const reader = new FileReader();
+                reader.onload = (evt) => loadJSON(evt.target.result);
+                reader.readAsText(file);
+            }
+        });
+
+        // Timeline Scrubber
+        document.getElementById('scrubber').addEventListener('input', (e) => {
+            currentFrame = parseInt(e.target.value);
+            renderFrame(currentFrame);
+        });
+
+        // Play / Pause
+        const btnPlay = document.getElementById('btn-play');
+        btnPlay.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            btnPlay.innerText = isPlaying ? "⏸ Pause" : "▶ Lecture";
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                btnPlay.click();
+            }
+        });
+
+        // Frame Steps
+        document.getElementById('btn-step-prev').addEventListener('click', () => {
+            if (!observationData) return;
+            isPlaying = false;
+            btnPlay.innerText = "▶ Lecture";
+            currentFrame = (currentFrame - 1 + observationData.frames.length) % observationData.frames.length;
+            document.getElementById('scrubber').value = currentFrame;
+            renderFrame(currentFrame);
+        });
+
+        document.getElementById('btn-step-next').addEventListener('click', () => {
+            if (!observationData) return;
+            isPlaying = false;
+            btnPlay.innerText = "▶ Lecture";
+            currentFrame = (currentFrame + 1) % observationData.frames.length;
+            document.getElementById('scrubber').value = currentFrame;
+            renderFrame(currentFrame);
+        });
+
+        document.getElementById('btn-reset-cam').addEventListener('click', centerCameraOnSkeleton);
+
+        // Speeds
+        const setSpeed = (spd, btn) => {
+            playSpeed = spd;
+            ['spd-025', 'spd-05', 'spd-1'].forEach(id => document.getElementById(id).classList.remove('btn-primary'));
+            btn.classList.add('btn-primary');
+        };
+        document.getElementById('spd-025').addEventListener('click', (e) => setSpeed(0.25, e.target));
+        document.getElementById('spd-05').addEventListener('click', (e) => setSpeed(0.5, e.target));
+        document.getElementById('spd-1').addEventListener('click', (e) => setSpeed(1.0, e.target));
+
+        // Bone selection change
+        document.getElementById('bone-select').addEventListener('change', (e) => {
+            const bone = e.target.value;
+            const details = document.getElementById('bone-details');
+            if (bone !== 'all' && observationData && observationData.diagnostics && observationData.diagnostics[bone]) {
+                const d = observationData.diagnostics[bone];
+                details.style.display = 'block';
+                document.getElementById('bone-rigidity').innerText = `${d.max_rigidity_deviation.toFixed(5)} m`;
+                document.getElementById('bone-speed').innerText = `${d.max_speed_m_s.toFixed(2)} m/s`;
+                document.getElementById('bone-accel').innerText = `${d.max_accel_m_s2.toFixed(2)} m/s²`;
+            } else {
+                details.style.display = 'none';
+            }
+            renderFrame(currentFrame);
+        });
+
+        // Toggles
+        ['toggle-skeleton', 'toggle-markers', 'toggle-cages', 'toggle-axes', 'toggle-trails'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => renderFrame(currentFrame));
+        });
+
+        // Auto-load marker_observations.json if accessible
+        window.addEventListener('DOMContentLoaded', () => {
+            initScene();
+            fetch('./marker_observations.json')
+                .then(r => r.ok ? r.text() : Promise.reject())
+                .then(txt => loadJSON(txt))
+                .catch(() => {
+                    // Normal if running via file:// protocol
+                });
+        });
+    </script>
+</body>
+</html>
