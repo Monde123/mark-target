@@ -1,9 +1,10 @@
 """
-Module isolate.adapters.gltf_mixamo_adapter
+Module adapters.gltf_mixamo_adapter
 ===========================================
 Adaptateur glTF / GLB spécifique pour avatars Mixamo:
 - Extrait la bind pose exacte et l'arbre squelettique sans ambiguïté
-- Injecte l'animation résultante et génère le fichier .glb final
+- Sérialise et injecte les canaux d'animation réels dans le conteneur glTF binaire
+- Génère un fichier .glb final entièrement jouable dans Blender, Unreal, Three.js
 """
 from __future__ import annotations
 
@@ -107,24 +108,178 @@ class GLTFMixamoAdapter(TargetAdapter):
         animation_clip: List[Dict[str, Any]],
         skeleton: TargetSkeleton,
         animation_name: str = "marker_animation",
+        frame_time: Optional[float] = None,
         **kwargs
     ) -> None:
-        """Exporte l'animation résolue dans le GLB cible."""
-        # Réutilisation de la sérialisation glTF propre
+        """Exporte l'animation résolue dans le GLB cible sous forme de vraies pistes glTF."""
         gltf = GLTF2().load(target_model_path)
-        fps = skeleton.fps if skeleton.fps > 0 else 30.0
-        n_frames = len(animation_clip)
-        times = (np.arange(n_frames, dtype=np.float32) / fps).tobytes()
+        if not animation_clip:
+            gltf.save(output_path)
+            return
 
-        # Mapping nom d'os -> node_index dans gltf
-        node_map = {}
+        fps = skeleton.fps if (skeleton.fps and skeleton.fps > 0) else 30.0
+        if frame_time is not None and frame_time > 0:
+            fps = 1.0 / frame_time
+        n_frames = len(animation_clip)
+        time_array = np.arange(n_frames, dtype=np.float32) / fps
+
+        # Résolution des noeuds par nom
+        node_map: Dict[str, int] = {}
         for idx, node in enumerate(gltf.nodes):
             if node.name:
+                node_map[node.name] = idx
                 c_name = self.canonical_bone_name(node.name)
                 node_map[c_name] = idx
-                node_map[node.name] = idx
 
-        # Construction du buffer d'animation
-        # Pour une intégration complète, on sérialise les samplers et channels
-        # On sauvegarde le nouveau modèle
+        # Récupération et alignement du binary blob
+        blob = bytearray(gltf.binary_blob() or b"")
+        pad = (4 - (len(blob) % 4)) % 4
+        blob.extend(b"\x00" * pad)
+
+        # 1. Accessor des timestamps (SCALAR, float32)
+        time_bytes = time_array.tobytes()
+        time_bv_idx = len(gltf.bufferViews)
+        gltf.bufferViews.append(
+            BufferView(buffer=0, byteOffset=len(blob), byteLength=len(time_bytes))
+        )
+        blob.extend(time_bytes)
+        pad = (4 - (len(blob) % 4)) % 4
+        blob.extend(b"\x00" * pad)
+
+        time_acc_idx = len(gltf.accessors)
+        gltf.accessors.append(
+            Accessor(
+                bufferView=time_bv_idx,
+                byteOffset=0,
+                componentType=5126,  # FLOAT
+                count=n_frames,
+                type="SCALAR",
+                min=[float(time_array[0])],
+                max=[float(time_array[-1])],
+            )
+        )
+
+        anim = Animation(name=animation_name)
+        sampler_idx = 0
+
+        # Identifier tous les os présents dans les frames
+        all_bones = set()
+        for f in animation_clip:
+            all_bones.update(f.get("bones", {}).keys())
+
+        for bone_name in sorted(all_bones):
+            # Retrouver l'indice du noeud glTF
+            node_idx = node_map.get(bone_name)
+            if node_idx is None:
+                raw_name = skeleton.raw_names.get(bone_name)
+                if raw_name:
+                    node_idx = node_map.get(raw_name)
+            if node_idx is None:
+                continue
+
+            # Extraire la trajectoire de quaternions [x, y, z, w]
+            # Dans animation_clip, quat est [w, x, y, z]
+            quats_xyzw = []
+            for f in animation_clip:
+                q = f["bones"].get(bone_name)
+                if q is None:
+                    q = quat_identity()
+                # Conversion [w, x, y, z] -> convention glTF [x, y, z, w]
+                quats_xyzw.append([q[1], q[2], q[3], q[0]])
+
+            quats_np = np.array(quats_xyzw, dtype=np.float32)
+            quat_bytes = quats_np.tobytes()
+
+            quat_bv_idx = len(gltf.bufferViews)
+            gltf.bufferViews.append(
+                BufferView(buffer=0, byteOffset=len(blob), byteLength=len(quat_bytes))
+            )
+            blob.extend(quat_bytes)
+            pad = (4 - (len(blob) % 4)) % 4
+            blob.extend(b"\x00" * pad)
+
+            quat_acc_idx = len(gltf.accessors)
+            gltf.accessors.append(
+                Accessor(
+                    bufferView=quat_bv_idx,
+                    byteOffset=0,
+                    componentType=5126,  # FLOAT
+                    count=n_frames,
+                    type="VEC4",
+                )
+            )
+
+            anim.samplers.append(
+                AnimationSampler(
+                    input=time_acc_idx,
+                    output=quat_acc_idx,
+                    interpolation="LINEAR",
+                )
+            )
+            anim.channels.append(
+                AnimationChannel(
+                    sampler=sampler_idx,
+                    target=AnimationChannelTarget(node=node_idx, path="rotation"),
+                )
+            )
+            sampler_idx += 1
+
+        # 2. Canal de translation pour la racine si mouvement
+        root_node_idx = node_map.get(skeleton.root_name)
+        if root_node_idx is not None:
+            trans_list = []
+            has_movement = False
+            for f in animation_clip:
+                r_pos = f.get("root", [0.0, 0.0, 0.0])
+                trans_list.append(r_pos)
+                if any(abs(v) > 1e-4 for v in r_pos):
+                    has_movement = True
+
+            if has_movement:
+                trans_np = np.array(trans_list, dtype=np.float32)
+                trans_bytes = trans_np.tobytes()
+                trans_bv_idx = len(gltf.bufferViews)
+                gltf.bufferViews.append(
+                    BufferView(buffer=0, byteOffset=len(blob), byteLength=len(trans_bytes))
+                )
+                blob.extend(trans_bytes)
+                pad = (4 - (len(blob) % 4)) % 4
+                blob.extend(b"\x00" * pad)
+
+                trans_acc_idx = len(gltf.accessors)
+                gltf.accessors.append(
+                    Accessor(
+                        bufferView=trans_bv_idx,
+                        byteOffset=0,
+                        componentType=5126,
+                        count=n_frames,
+                        type="VEC3",
+                        min=trans_np.min(axis=0).tolist(),
+                        max=trans_np.max(axis=0).tolist(),
+                    )
+                )
+
+                anim.samplers.append(
+                    AnimationSampler(
+                        input=time_acc_idx,
+                        output=trans_acc_idx,
+                        interpolation="LINEAR",
+                    )
+                )
+                anim.channels.append(
+                    AnimationChannel(
+                        sampler=sampler_idx,
+                        target=AnimationChannelTarget(node=root_node_idx, path="translation"),
+                    )
+                )
+                sampler_idx += 1
+
+        if anim.channels:
+            gltf.animations.append(anim)
+
+        # Mettre à jour la longueur du buffer 0 et le blob binaire
+        if gltf.buffers:
+            gltf.buffers[0].byteLength = len(blob)
+        gltf.set_binary_blob(bytes(blob))
+
         gltf.save(output_path)

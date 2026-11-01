@@ -1,10 +1,11 @@
-"""Module isolate.retargeting.solver
+"""Module retargeting.solver
 ====================================
 Solveur d'orientation universel multi-marqueurs basé sur Kabsch / Umeyama, RANSAC et Aim IK.
 Supporte :
 - La résolution multi-marqueurs par Kabsch rigide ou Umeyama (avec absorption d'échelle)
 - Le filtrage robuste RANSAC contre les occlusions et marqueurs aberrants
 - Le monitoring de déformation élastique non-rigide par tenseur de Green-Lagrange
+- Le moteur à mémoire temporelle récursive (t-1 -> t) éliminant les pops en T-pose
 - Le mode fallback à 1 marqueur par visée vectorielle (Aim IK)
 - Le lissage temporel de séquence via Bézier SQUAD / SLERP
 """
@@ -31,6 +32,7 @@ from markers.ransac_filter import (
     compute_green_lagrange_strain,
 )
 from retargeting.smoothing import smooth_quaternion_trajectory
+from retargeting.temporal_state import TemporalRetargetState
 
 
 class MarkerRetargetSolver:
@@ -69,9 +71,12 @@ class MarkerRetargetSolver:
         use_ransac: bool = False,
         ransac_threshold: float = 0.04,
         max_strain_threshold: Optional[float] = None,
+        temporal_state: Optional[TemporalRetargetState] = None,
     ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         """
         Résout l'orientation globale pour chaque os par Kabsch, Umeyama ou RANSAC.
+        Si temporal_state est fourni, applique l'alignement d'hémisphère de quaternion
+        et l'extrapolation inertielle continue en cas d'occlusion (anti-pop).
         """
         Q_global_t: Dict[str, np.ndarray] = {}
         diagnostics: Dict[str, Any] = {}
@@ -79,21 +84,33 @@ class MarkerRetargetSolver:
 
         for bone, q_rest in self.rest_rotations.items():
             if bone in root_override:
-                Q_global_t[bone] = quat_normalize(root_override[bone])
+                q_root = quat_normalize(root_override[bone])
+                if temporal_state is not None:
+                    q_root = temporal_state.regularize_quaternion(bone, q_root)
+                Q_global_t[bone] = q_root
                 diagnostics[bone] = {"status": "root_override"}
                 continue
 
+            # Gestion fallback si marqueurs absents
             if bone not in positions_t or bone not in positions_rest:
-                Q_global_t[bone] = q_rest.copy()
-                diagnostics[bone] = {"status": "fallback_rest_no_markers"}
+                if temporal_state is not None and temporal_state.has_history():
+                    Q_global_t[bone] = temporal_state.predict_rotation(bone, q_rest)
+                    diagnostics[bone] = {"status": "fallback_temporal_prediction", "cause": "no_markers"}
+                else:
+                    Q_global_t[bone] = q_rest.copy()
+                    diagnostics[bone] = {"status": "fallback_rest_no_markers"}
                 continue
 
             pts_t = positions_t[bone]
             pts_r = positions_rest[bone]
 
             if len(pts_t) < self.min_points_kabsch or len(pts_r) < self.min_points_kabsch:
-                Q_global_t[bone] = q_rest.copy()
-                diagnostics[bone] = {"status": "fallback_insufficient_points"}
+                if temporal_state is not None and temporal_state.has_history():
+                    Q_global_t[bone] = temporal_state.predict_rotation(bone, q_rest)
+                    diagnostics[bone] = {"status": "fallback_temporal_prediction", "cause": "insufficient_points"}
+                else:
+                    Q_global_t[bone] = q_rest.copy()
+                    diagnostics[bone] = {"status": "fallback_insufficient_points"}
                 continue
 
             # Contrôle de déformation non rigide (Green-Lagrange)
@@ -101,12 +118,21 @@ class MarkerRetargetSolver:
             if max_strain_threshold is not None:
                 _, strain_val = compute_green_lagrange_strain(pts_r, pts_t)
                 if strain_val > max_strain_threshold:
-                    Q_global_t[bone] = q_rest.copy()
-                    diagnostics[bone] = {
-                        "status": "fallback_strain_exceeded",
-                        "strain": strain_val,
-                        "threshold": max_strain_threshold,
-                    }
+                    if temporal_state is not None and temporal_state.has_history():
+                        Q_global_t[bone] = temporal_state.predict_rotation(bone, q_rest)
+                        diagnostics[bone] = {
+                            "status": "fallback_temporal_prediction",
+                            "cause": "strain_exceeded",
+                            "strain": strain_val,
+                            "threshold": max_strain_threshold,
+                        }
+                    else:
+                        Q_global_t[bone] = q_rest.copy()
+                        diagnostics[bone] = {
+                            "status": "fallback_strain_exceeded",
+                            "strain": strain_val,
+                            "threshold": max_strain_threshold,
+                        }
                     continue
 
             w = weights.get(bone) if weights else None
@@ -129,6 +155,8 @@ class MarkerRetargetSolver:
                         R_move, scale_val, _, _, _, rms, s_vals = kabsch_umeyama_rotation(
                             pts_r, pts_t, min_rank_ratio=self.min_rank_ratio, max_rms_ratio=self.max_rms_ratio
                         )
+                    if temporal_state is not None:
+                        scale_val = temporal_state.filter_scale(scale_val)
                     diag_status = "umeyama_success"
                 else:
                     if w is not None:
@@ -143,7 +171,13 @@ class MarkerRetargetSolver:
                     diag_status = "kabsch_success"
 
                 q_move = matrix_to_quaternion(R_move)
-                Q_global_t[bone] = quat_normalize(quat_mul(q_move, q_rest))
+                q_resolved = quat_normalize(quat_mul(q_move, q_rest))
+
+                # Régularisation de l'hémisphère de quaternion via l'historique t-1
+                if temporal_state is not None:
+                    q_resolved = temporal_state.regularize_quaternion(bone, q_resolved)
+
+                Q_global_t[bone] = q_resolved
                 diagnostics[bone] = {
                     "status": diag_status,
                     "rms": rms,
@@ -152,11 +186,19 @@ class MarkerRetargetSolver:
                     "singular_values": s_vals,
                 }
             except ValueError as e:
-                Q_global_t[bone] = q_rest.copy()
-                diagnostics[bone] = {
-                    "status": "fallback_rest_exception",
-                    "error": str(e),
-                }
+                if temporal_state is not None and temporal_state.has_history():
+                    Q_global_t[bone] = temporal_state.predict_rotation(bone, q_rest)
+                    diagnostics[bone] = {
+                        "status": "fallback_temporal_prediction",
+                        "cause": "exception",
+                        "error": str(e),
+                    }
+                else:
+                    Q_global_t[bone] = q_rest.copy()
+                    diagnostics[bone] = {
+                        "status": "fallback_rest_exception",
+                        "error": str(e),
+                    }
 
         return Q_global_t, diagnostics
 
@@ -170,13 +212,21 @@ class MarkerRetargetSolver:
         use_ransac: bool = False,
         ransac_threshold: float = 0.04,
         max_strain_threshold: Optional[float] = None,
+        use_temporal_prior: bool = False,
+        temporal_state: Optional[TemporalRetargetState] = None,
     ) -> List[Dict[str, np.ndarray]]:
         """
-        Résout une séquence temporelle complète avec lissage temporel optionnel (Bézier/SLERP).
+        Résout une séquence temporelle complète avec lissage temporel optionnel (Bézier/SLERP)
+        et filtrage récursif d'état temporel t-1 -> t.
         """
         n_frames = len(sequence_positions_t)
         if n_frames == 0:
             return []
+
+        # Instanciation de l'état temporel si demandé
+        state = temporal_state
+        if use_temporal_prior and state is None:
+            state = TemporalRetargetState()
 
         # 1. Résolution frame par frame
         raw_frames_rotations: List[Dict[str, np.ndarray]] = []
@@ -189,13 +239,16 @@ class MarkerRetargetSolver:
                 use_ransac=use_ransac,
                 ransac_threshold=ransac_threshold,
                 max_strain_threshold=max_strain_threshold,
+                temporal_state=state,
             )
+            if state is not None:
+                state.update_frame(q_glob)
             raw_frames_rotations.append(q_glob)
 
         if smoothing_factor <= 0.0 or n_frames <= 2:
             return raw_frames_rotations
 
-        # 2. Lissage temporel par os à travers les frames
+        # 2. Lissage temporel par os à travers les frames (Bézier SQUAD)
         bones = list(self.rest_rotations.keys())
         smoothed_series: Dict[str, List[np.ndarray]] = {}
 
@@ -286,3 +339,18 @@ class MarkerRetargetSolver:
             queue.extend(children)
 
         return Q_global_t, diagnostics
+
+    def solve_frame_joint_markers(
+        self,
+        positions_t: Dict[str, np.ndarray],
+        positions_rest: Dict[str, np.ndarray],
+        translating=None,
+    ) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
+        """
+        Un point par joint. La rotation monde vient des positions des enfants.
+        Les canaux d'Euler et rest_rotations ne sont pas utilisés.
+        `translating` liste les os dont le squelette déclare un canal de position.
+        """
+        from retargeting.joint_markers import solve_joint_markers
+
+        return solve_joint_markers(positions_t, positions_rest, self.parents, translating)
