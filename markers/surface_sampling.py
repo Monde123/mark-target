@@ -1,5 +1,5 @@
 """
-Module isolate.markers.surface_sampling
+Module markers.surface_sampling
 =======================================
 Outils d'échantillonnage de surface génériques et agnostiques :
 - Découpage d'un maillage global en sous-maillages (submeshes) par dominance de poids

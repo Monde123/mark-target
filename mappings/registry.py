@@ -1,4 +1,4 @@
-"""Module isolate.mappings.registry
+"""Module mappings.registry
 ================================
 Registre et résolveur universel de mappings entre espaces d'os arbitraires.
 Supporte nativement : SMPL-X (HybrIK-X / Mimo), Mixamo (.glb), VRM (.vrm), BVH (MoCap) et Standard Humanoid.
@@ -26,6 +26,8 @@ from mappings.standard_humanoid import (
 class MappingRegistry:
     """Registre de mappings configurables avec pont automatique via standard pivot."""
 
+    # Note : état de classe mutable partagé. Dans les suites de tests, réinitialiser
+    # cet état dans setUp/tearDown pour préserver l'isolation entre tests.
     _direct_mappings: Dict[str, Dict[str, str]] = {}
 
     @classmethod
@@ -90,7 +92,7 @@ class MappingRegistry:
     @classmethod
     def list_supported_formats(cls) -> List[str]:
         """Retourne la liste des formats supportés nativement."""
-        return ["mixamo", "glb", "vrm", "smplx", "hybrik", "pk", "bvh", "cmu", "standard"]
+        return ["mixamo", "glb", "vrm", "smplx", "hybrik", "pk", "mimo", "bvh", "cmu", "mocap", "standard"]
 
     @classmethod
     def _get_to_standard_map(cls, fmt: str) -> Optional[Dict[str, str]]:

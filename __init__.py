@@ -1,11 +1,11 @@
 """
-Module isolate
-==============
+Module mark_target
+==================
 Package autonome de Retargeting par Marqueurs Multi-Points (Kabsch) et Mono-Marqueurs (Aim).
 Indépendant du modèle source et du modèle final.
 """
 
-from isolate.core import (
+from core import (
     quat_normalize,
     quat_identity,
     quat_inv,
@@ -16,20 +16,20 @@ from isolate.core import (
     kabsch_rotation,
     weighted_kabsch_rotation,
 )
-from isolate.markers import (
+from markers import (
     build_bone_submeshes,
     sample_multi_markers_for_bone,
     extract_markers_positions,
     compute_marker_stability_weights,
 )
-from isolate.retargeting import (
+from retargeting import (
     MarkerRetargetSolver,
     global_to_local_hierarchy,
     local_to_global_hierarchy,
     apply_euler_correction_to_root,
 )
-from isolate.mappings import MappingRegistry
-from isolate.adapters import (
+from mappings import MappingRegistry
+from adapters import (
     SourceAdapter,
     TargetAdapter,
     TargetSkeleton,

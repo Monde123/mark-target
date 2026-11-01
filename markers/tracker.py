@@ -1,5 +1,5 @@
 """
-Module isolate.markers.tracker
+Module markers.tracker
 ==============================
 Suivi et reconstruction temporelle des marqueurs:
 - Évaluation des positions 3D des marqueurs par frame à partir d'un maillage déformé
@@ -8,7 +8,7 @@ Suivi et reconstruction temporelle des marqueurs:
 from __future__ import annotations
 
 import numpy as np
-from typing import Dict, Any
+from typing import Dict
 
 
 def extract_markers_positions(

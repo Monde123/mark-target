@@ -1,5 +1,5 @@
 """
-Exemple d'utilisation minimal et autonome du module `isolate`.
+Exemple d'utilisation minimal et autonome du framework `mark-target`.
 Ne nécessite que Python et NumPy. Aucune donnée externe requise.
 """
 import numpy as np
@@ -10,7 +10,7 @@ from retargeting.kinematics import global_to_local_hierarchy
 
 
 def run_minimal_example():
-    print("=== Démonstration autonome du solveur isolate ===")
+    print("=== Démonstration autonome du solveur mark-target ===")
 
     # 1. Définition d'un rig squelettique simple (Hips -> Chest -> Arm -> ForeArm)
     parents = {

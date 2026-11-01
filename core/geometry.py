@@ -1,5 +1,5 @@
 """
-Module isolate.core.geometry
+Module core.geometry
 ============================
 Opérations d'algèbre 3D purement basées sur NumPy:
 - Quaternions avec convention [w, x, y, z]
@@ -30,6 +30,11 @@ def quat_inv(q: np.ndarray) -> np.ndarray:
     """Calcule le conjugué/inverse d'un quaternion unitaire [w, x, y, z]."""
     q_norm = quat_normalize(q)
     return np.array([q_norm[0], -q_norm[1], -q_norm[2], -q_norm[3]], dtype=np.float64)
+
+
+def quat_conjugate(q: np.ndarray) -> np.ndarray:
+    """Alias pour quat_inv : conjugué d'un quaternion [w, -x, -y, -z]."""
+    return quat_inv(q)
 
 
 def quat_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:

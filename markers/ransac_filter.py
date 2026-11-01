@@ -1,4 +1,4 @@
-"""Module isolate.markers.ransac_filter
+"""Module markers.ransac_filter
 =======================================
 Filtre algébrique robuste RANSAC et métrique de déformation élastique Green-Lagrange :
 - Élimination des marqueurs aberrants (occlusions, glissements, bruit optique) par consensus
@@ -7,7 +7,7 @@ Filtre algébrique robuste RANSAC et métrique de déformation élastique Green-
 
 from __future__ import annotations
 import numpy as np
-from typing import Tuple, List, Optional
+from typing import Tuple
 from core.kabsch import kabsch_rotation
 
 
@@ -16,7 +16,7 @@ def ransac_kabsch_alignment(
     P_current: np.ndarray,
     inlier_threshold: float = 0.05,
     max_iterations: int = 40,
-    min_inlier_ratio: float = 0.5,
+    min_inlier_ratio: float = 0.5,  # NOTE: min_inlier_ratio est déclaré mais non implémenté — réservé pour une future version
 ) -> Tuple[np.ndarray, np.ndarray, float, int]:
     """
     Estime la rotation optimale via consensus robuste RANSAC (RANdom SAmple Consensus).

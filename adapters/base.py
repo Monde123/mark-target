@@ -1,5 +1,5 @@
 """
-Module isolate.adapters.base
+Module adapters.base
 ============================
 Interfaces de base (Protocols / Abstract Classes) pour les entrées et sorties.
 Permet d'accueillir n'importe quel format (PK, BVH, Mixamo, VRM, MoCap).
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 import numpy as np
 
 
@@ -30,6 +30,7 @@ class MarkerFrameSequence:
     weights: Optional[Dict[str, np.ndarray]] = None # {bone_name: (N,)}
     root_rotations: Optional[List[np.ndarray]] = None # liste de [w, x, y, z] pour la racine si dispo
     root_translations: Optional[np.ndarray] = None    # (n_frames, 3)
+    joint_rotations: Optional[List[Dict[str, np.ndarray]]] = None  # rotations monde [w, x, y, z]
     fps: float = 30.0
 
 

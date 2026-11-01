@@ -1,5 +1,5 @@
 """
-Module isolate.core.kabsch
+Module core.kabsch
 ==========================
 Solveurs d'alignement rigide optimal par l'algorithme de Kabsch (SVD):
 - Kabsch non-pondéré classique

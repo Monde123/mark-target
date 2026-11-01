@@ -1,4 +1,4 @@
-"""Module isolate.retargeting.smoothing
+"""Module retargeting.smoothing
 ======================================
 Lissage temporel et anti-jitter pour le retargeting :
 - Algorithme de De Casteljau pour trajectoires euclidiennes R^3 (racine / Hips translation)

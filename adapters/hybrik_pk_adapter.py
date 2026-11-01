@@ -1,5 +1,5 @@
 """
-Module isolate.adapters.hybrik_pk_adapter
+Module adapters.hybrik_pk_adapter
 =========================================
 Adaptateur spécifique pour les sorties HybrIK / SMPL-X (.pk):
 - Lit res.pk (rotations quaternions, translations, fps)

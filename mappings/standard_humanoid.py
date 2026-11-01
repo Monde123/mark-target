@@ -1,11 +1,11 @@
-"""Module isolate.mappings.standard_humanoid
+"""Module mappings.standard_humanoid
 =========================================
 Nomenclature standardisée pivot "Humanoid" inspirée des standards Unity / VRM / OpenXR.
 Sert de pont universel entre les formats SMPL-X (HybrIK-X), Mixamo, VRM, BVH (MoCap).
 Total : 55 os standards (22 corps + 3 tête/visage + 30 doigts).
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 # Noms normalisés pivot (55 os exactement)
 STANDARD_HUMANOID_BONES = [

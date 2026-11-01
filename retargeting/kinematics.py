@@ -1,5 +1,5 @@
 """
-Module isolate.retargeting.kinematics
+Module retargeting.kinematics
 =====================================
 Gestion de la cinématique directe et inverse pour arbres squelettiques génériques:
 - Conversion des orientations globales en rotations relatives locales

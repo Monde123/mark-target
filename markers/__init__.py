@@ -1,4 +1,4 @@
-"""Module isolate.markers
+"""Module markers
 ======================
 Sous-package de placement, sélection, filtrage RANSAC et suivi des marqueurs 3D.
 """
