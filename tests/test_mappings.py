@@ -19,6 +19,13 @@ from mappings.registry import MappingRegistry
 
 
 class TestMappingSubsystem(unittest.TestCase):
+    def setUp(self):
+        self._registry_backup = {k: dict(v) for k, v in MappingRegistry._direct_mappings.items()}
+
+    def tearDown(self):
+        MappingRegistry._direct_mappings.clear()
+        MappingRegistry._direct_mappings.update(self._registry_backup)
+
     def test_standard_bones_count(self):
         """Vérifie la présence exacte des 55 os standards du corps humain."""
         self.assertEqual(len(STANDARD_HUMANOID_BONES), 55)

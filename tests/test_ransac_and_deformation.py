@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from markers.ransac_filter import ransac_kabsch_alignment, compute_green_lagrange_strain
 from core.kabsch import kabsch_rotation
+from core.geometry import quaternion_to_matrix
 from retargeting.solver import MarkerRetargetSolver
 
 
@@ -101,6 +102,26 @@ class TestRansacAndDeformation(unittest.TestCase):
             max_strain_threshold=0.2,
         )
         self.assertEqual(diag["LeftForeArm"]["status"], "fallback_strain_exceeded")
+
+    def test_solver_integration_clean_markers(self):
+        """Vérifie qu'avec des marqueurs propres, le solveur produit la bonne rotation via Kabsch/RANSAC."""
+        R_true = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]], dtype=np.float64)
+        rest_rots = {"LeftForeArm": np.array([1.0, 0.0, 0.0, 0.0])}
+        parents = {"LeftForeArm": None}
+        solver = MarkerRetargetSolver(rest_rotations=rest_rots, parents=parents)
+
+        pos_t_clean = {"LeftForeArm": (self.P_rest @ R_true.T)}
+        pos_rest = {"LeftForeArm": self.P_rest}
+
+        Q, diag = solver.solve_frame_multi_kabsch(pos_t_clean, pos_rest, use_ransac=True)
+
+        self.assertEqual(diag["LeftForeArm"]["status"], "ransac_success")
+        R_extracted = quaternion_to_matrix(Q["LeftForeArm"])
+        np.testing.assert_allclose(
+            R_extracted, R_true, atol=1e-4,
+            err_msg="Le solveur doit retrouver la rotation exacte sur des marqueurs propres"
+        )
+
 
 
 if __name__ == "__main__":

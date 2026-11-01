@@ -1,12 +1,16 @@
 """
-Tests unitaires synthétiques pour le module `isolate`.
+Tests unitaires synthétiques pour le module de retargeting par marqueurs.
 Vérifie la robustesse mathématique, l'algorithme Kabsch et le solveur hiérarchique
 sans AUCUNE dépendance externe lourde (ni PyTorch, ni SMPL-X, ni Mixamo).
 """
 import unittest
+import sys
+import os
 import numpy as np
 
-from isolate.core.geometry import (
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from core.geometry import (
     quat_normalize,
     quat_identity,
     quat_inv,
@@ -16,13 +20,13 @@ from isolate.core.geometry import (
     quaternion_to_matrix,
     quat_from_two_vectors,
 )
-from isolate.core.kabsch import kabsch_rotation, weighted_kabsch_rotation
-from isolate.retargeting.solver import MarkerRetargetSolver
-from isolate.retargeting.kinematics import global_to_local_hierarchy, local_to_global_hierarchy
-from isolate.mappings.registry import MappingRegistry
+from core.kabsch import kabsch_rotation, weighted_kabsch_rotation
+from retargeting.solver import MarkerRetargetSolver
+from retargeting.kinematics import global_to_local_hierarchy, local_to_global_hierarchy
+from mappings.registry import MappingRegistry
 
 
-class TestIsolateModule(unittest.TestCase):
+class TestUniversalMarkersModule(unittest.TestCase):
 
     def test_geometry_quaternions(self):
         # 1. Normalisation & identité
@@ -85,8 +89,8 @@ class TestIsolateModule(unittest.TestCase):
 
         # Simulation de nuages de points de repos
         P_rest = {
-            "Arm": np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-            "ForeArm": np.array([[1, 0, 0], [2, 0, 0], [1, 1, 0], [1, 0, 1]]),
+            "Arm": np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64),
+            "ForeArm": np.array([[1, 0, 0], [2, 0, 0], [1, 1, 0], [1, 0, 1]], dtype=np.float64),
         }
 
         # Simulation d'un déplacement à l'instant t (rotation de 90° sur Arm)
@@ -98,6 +102,13 @@ class TestIsolateModule(unittest.TestCase):
 
         Q_global, diagnostics = solver.solve_frame_multi_kabsch(P_t, P_rest)
         self.assertEqual(diagnostics["Arm"]["status"], "kabsch_success")
+
+        # Vérification mathématique stricte : la rotation résolue doit reproduire R_arm
+        R_extracted = quaternion_to_matrix(Q_global["Arm"])
+        np.testing.assert_allclose(
+            R_extracted, R_arm, atol=1e-4,
+            err_msg="La rotation extraite par le solveur doit correspondre exactement à R_arm"
+        )
 
         # Conversion globale -> locale
         Q_local = global_to_local_hierarchy(Q_global, parents)
