@@ -1,8 +1,9 @@
-"""
-Module adapters
+"""Module adapters
 =======================
 Exports des adaptateurs de formats d'entrée et de sortie.
+Supporte le chargement paresseux (lazy-loading) pour fonctionner même sans pygltflib.
 """
+
 from adapters.base import (
     SourceAdapter,
     TargetAdapter,
@@ -11,9 +12,21 @@ from adapters.base import (
 )
 from adapters.bvh_adapter import BVHAdapter
 from adapters.bvh_parse import BvhClip, BvhParseError, format_report, parse_bvh, write_bvh
-from adapters.gltf_mixamo_adapter import GLTFMixamoAdapter
-from adapters.vrm_adapter import VRMAdapter
-from adapters.hybrik_pk_adapter import HybrIKPKAdapter
+
+try:
+    from adapters.gltf_mixamo_adapter import GLTFMixamoAdapter
+except ImportError:
+    GLTFMixamoAdapter = None
+
+try:
+    from adapters.vrm_adapter import VRMAdapter
+except ImportError:
+    VRMAdapter = None
+
+try:
+    from adapters.hybrik_pk_adapter import HybrIKPKAdapter
+except ImportError:
+    HybrIKPKAdapter = None
 
 __all__ = [
     "SourceAdapter",

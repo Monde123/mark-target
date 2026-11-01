@@ -51,4 +51,4 @@ Thumbs.db
 verify/out/
 test_*.glb
 test_*.bvh
-
+examples/output_retargeted.bvh
