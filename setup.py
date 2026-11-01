@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="isolate-marker-retargeting",
+    name="mark-target",
     version="1.0.0",
     description="Universal 3D Surface Marker & Multi-Point Kabsch Retargeting Framework",
     author="Pipeline Signes Team",
@@ -9,6 +9,7 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "numpy>=1.20.0",
+        "pygltflib>=1.15.0",
     ],
     extras_require={
         "gltf": ["pygltflib>=1.15.0"],

@@ -41,3 +41,14 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+# 3D Models & MoCap binary assets (keep repository pure and lightweight on GitHub)
+*.glb
+*.gltf
+*.vrm
+*.bvh
+*.pk
+verify/out/
+test_*.glb
+test_*.bvh
+

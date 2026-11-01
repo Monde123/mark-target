@@ -205,3 +205,25 @@ Conformément aux directives d'ingénierie :
 * **Points Clés :**
   - **Avantage compétitif :** Décomposition SVD fermée $1000\times$ plus rapide que SMPLify-X (< 0.4 ms vs 1500 ms), 3 DoF verrouillés (Roll/Twist) sans gimbal lock, CPU pur sans GPU.
   - **Stratégie d'entraînement :** Ne pas remplacer Kabsch, mais adopter le modèle **Solveur Hybride : $q_{\text{final}} = q_{\text{Kabsch}} \otimes \Delta q_{\text{neural}}$** pour corriger le foot-skating et les limites anatomiques.
+
+
+## 14. Étape 4 Réalisée : Moteur Temporel Récursif ($t-1 \to t$), Ossature Tampon Canonique & Auto-Mapper
+
+* **Statut :** Complété & Validé par 33 tests unitaires (`Ran 33 tests in 0.088s — OK`).
+* **Modifications apportées :**
+  1. `retargeting/temporal_state.py` :
+     - Implémentation de `TemporalRetargetState` pour le suivi d'état récursif.
+     - Alignement d'hémisphère de quaternion sur $\mathbb{S}^3$ ($\langle q_t, q_{t-1} \rangle \ge 0$) éliminant les sauts de $360^\circ$.
+     - Algèbre de Lie $\mathfrak{so}(3)$ (cartes logarithmique et exponentielle) pour le calcul de vitesse angulaire $\vec{\omega}_{t-1}$ et la prédiction cinématique inertielle lors d'occlusions (suppression du pop vers la T-pose).
+     - Filtrage exponentiel de l'échelle d'Umeyama $c$.
+  2. `mappings/buffer_armature.py` :
+     - Modélisation de `CanonicalBufferArmature` : 55 os dans une T-Pose géométrique métrique parfaite (bras horizontaux selon $\pm X$, jambes verticales selon $-Y$, regard $+Z$).
+  3. `mappings/auto_mapper.py` :
+     - `AutoBoneIdentifier` : classification sémantique et topologique multi-logiciels (Mixamo, Blender Rigify, VRM/VRoid, Biovision/CMU, SMPL-X) avec filtrage des os auxiliaires.
+     - `BufferRigMapper` : calcul automatique des pré-rotations d'alignement de pose au repos ($\Delta Q_{\text{align}}$) absorbant les disparités A-Pose $\leftrightarrow$ T-Pose.
+  4. `retargeting/solver.py` :
+     - Intégration du paramètre `temporal_state` dans `solve_frame_multi_kabsch` et `solve_sequence`.
+  5. `run_marker_retarget.py` :
+     - Nouveaux arguments CLI : `--auto-map` et `--use-temporal-prior`.
+  6. `tests/test_temporal_state.py` et `tests/test_auto_mapper.py` :
+     - 11 nouveaux tests validant l'alignement d'hémisphère, l'extrapolation d'inertie, la reconnaissance automatique et l'alignement A-Pose $\to$ T-Pose.
