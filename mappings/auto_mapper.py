@@ -55,7 +55,7 @@ class AutoBoneIdentifier:
     # Mots-clés pour le corps axial (ordre décroissant de spécificité)
     BODY_PATTERNS: List[Tuple[str, List[str]]] = [
         ("Hips", ["hips", "pelvis", "hip", "root_motion"]),
-        ("Spine2", ["spine2", "upperchest", "upper_chest", "chest2"]),
+        ("Spine2", ["spine2", "upperchest", "upper_chest", "chest2", "mid_shoulder", "midshoulder"]),
         ("Spine1", ["spine1", "chest", "thorax"]),
         ("Spine", ["spine0", "spine", "abdomen", "torso"]),
         ("Neck", ["neck"]),
@@ -115,7 +115,7 @@ class AutoBoneIdentifier:
         """
         lower = raw_name.lower()
         # Exclusion immédiate des os de torsion et de physique
-        if any(ign in lower for ign in ["twist", "cloth", "hair", "skirt", "prop", "weapon", "ik", "pole"]):
+        if any(ign in lower for ign in ["twist", "cloth", "hair", "skirt", "prop", "weapon", "ik", "pole", "top_end", "_end", "nub"]):
             return None
 
         side = cls._detect_side(raw_name)
@@ -124,17 +124,19 @@ class AutoBoneIdentifier:
         if side:
             for finger in cls.FINGER_NAMES:
                 if finger.lower() in lower:
+                    if "4" in lower or "tip" in lower:
+                        return None
                     digit = None
                     for d in ["1", "2", "3"]:
                         if d in lower:
                             digit = d
                             break
                     if not digit:
-                        if any(w in lower for w in ["proximal", "meta"]):
+                        if any(w in lower for w in ["proximal", "meta", "mcp", "cmc"]):
                             digit = "1"
                         elif any(w in lower for w in ["intermediate", "middle", "pip"]):
                             digit = "2"
-                        elif any(w in lower for w in ["distal", "tip", "dip"]):
+                        elif any(w in lower for w in ["distal", "dip"]):
                             digit = "3"
                         else:
                             digit = "1"
@@ -194,6 +196,16 @@ class BufferRigMapper:
         self.target_to_standard = AutoBoneIdentifier.map_skeleton(target_bones)
         self.standard_to_target = {std: tgt for tgt, std in self.target_to_standard.items()}
 
+        # Résolution anatomique : si la source a Shoulder mais pas Arm séparé (bras à 2 segments),
+        # l'os 'Shoulder' source correspond à l'humérus (Arm)
+        for side in ["Left", "Right"]:
+            sh_std = f"{side}Shoulder"
+            arm_std = f"{side}Arm"
+            if arm_std not in self.source_to_standard.values():
+                src_sh = [s for s, std in self.source_to_standard.items() if std == sh_std]
+                if src_sh:
+                    self.source_to_standard[src_sh[0]] = arm_std
+
         self.source_rest_pos = source_rest_positions or {}
         self.target_rest_pos = target_rest_positions or {}
         self.source_parents = source_parents or {}
@@ -220,12 +232,12 @@ class BufferRigMapper:
             # Trouver le vecteur de l'os dans la source
             children = [b for b, p in self.source_parents.items() if p == src_bone]
             if children and src_bone in self.source_rest_pos and children[0] in self.source_rest_pos:
-                p_b = self.source_rest_pos[src_bone]
-                p_c = self.source_rest_pos[children[0]]
+                p_b = np.asarray(self.source_rest_pos[src_bone], dtype=np.float64).reshape(-1)
+                p_c = np.asarray(self.source_rest_pos[children[0]], dtype=np.float64).reshape(-1)
                 diff = p_c - p_b
                 norm = float(np.linalg.norm(diff))
                 if norm > 1e-6:
-                    u_src = diff / norm
+                    u_src = (diff / norm).reshape(-1)
                     # Rotation amenant la direction source sur la direction canonique
                     self.source_align_rotations[src_bone] = quat_from_two_vectors(u_src, u_canon)
                     continue

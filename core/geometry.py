@@ -60,8 +60,8 @@ def rotate_vector(q: np.ndarray, v: np.ndarray) -> np.ndarray:
 
 def quat_from_two_vectors(u: np.ndarray, v: np.ndarray, eps: float = 1e-8) -> np.ndarray:
     """Calcule le quaternion de rotation minimale alignant le vecteur u sur v."""
-    u_arr = np.asarray(u, dtype=np.float64)
-    v_arr = np.asarray(v, dtype=np.float64)
+    u_arr = np.asarray(u, dtype=np.float64).reshape(-1)
+    v_arr = np.asarray(v, dtype=np.float64).reshape(-1)
     norm_u = np.linalg.norm(u_arr)
     norm_v = np.linalg.norm(v_arr)
     if norm_u < eps or norm_v < eps:

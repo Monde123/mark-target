@@ -18,6 +18,7 @@ class TargetSkeleton:
     rest_rotations: Dict[str, np.ndarray]  # {bone_name: quat_rest [w, x, y, z]}
     parents: Dict[str, Optional[str]]       # {bone_name: parent_name or None}
     raw_names: Optional[Dict[str, str]] = None  # {nom_canonique: nom_dans_le_fichier}
+    bind_local_rotations: Optional[Dict[str, np.ndarray]] = None  # {bone_name: quat_local [w, x, y, z]}
     root_name: str = "Hips"
     fps: float = 30.0
 
@@ -31,6 +32,7 @@ class MarkerFrameSequence:
     root_rotations: Optional[List[np.ndarray]] = None # liste de [w, x, y, z] pour la racine si dispo
     root_translations: Optional[np.ndarray] = None    # (n_frames, 3)
     joint_rotations: Optional[List[Dict[str, np.ndarray]]] = None  # rotations monde [w, x, y, z]
+    parents: Optional[Dict[str, Optional[str]]] = None
     fps: float = 30.0
 
 

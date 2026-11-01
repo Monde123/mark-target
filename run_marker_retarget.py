@@ -28,6 +28,10 @@ from adapters.hybrik_pk_adapter import HybrIKPKAdapter
 from adapters.bvh_adapter import BVHAdapter
 from adapters.gltf_mixamo_adapter import GLTFMixamoAdapter
 from adapters.vrm_adapter import VRMAdapter
+from markers.virtual_cage import VirtualBoneCageGenerator
+from markers.observer import MarkerObserver
+from core.kabsch import kabsch_umeyama_rotation
+from core.geometry import matrix_to_quaternion, quat_mul, quat_inv, quat_normalize, quat_identity
 
 
 def main():
@@ -48,6 +52,9 @@ def main():
     parser.add_argument("--unit", choices=["m", "cm", "inch"], default=None, help="Unité déclarée du BVH. Rien n'est converti sans elle.")
     parser.add_argument("--up-axis", choices=["Y", "Z"], default=None)
     parser.add_argument("--handedness", choices=["right", "left"], default=None)
+    parser.add_argument("--use-virtual-cages", action="store_true", default=False, help="Cages tetraedriques rigides 4 marqueurs")
+    parser.add_argument("--view-markers", action="store_true", default=False, help="Ouvrir le visualiseur 3D")
+    parser.add_argument("--export-observer-json", type=str, default=None, help="Exporter diagnostic JSON")
     parser.add_argument(
         "--ignore",
         default="",
@@ -146,6 +153,31 @@ def main():
     )
 
     temporal_state = None
+    use_cages = args.use_virtual_cages
+    if use_cages:
+        print("[mark-target] Génération des cages rigides tétraédriques 4 marqueurs par os...")
+        source_parents = sequence.parents or {
+            j.name: j.parent for j in getattr(source_adapter.last_clip, "joints", {}).values()
+        }
+        cage_gen = VirtualBoneCageGenerator()
+        rest_cages, frames_cages = cage_gen.generate_bone_cages_sequence(
+            parents=source_parents,
+            rest_positions=sequence.rest_markers,
+            frames_positions=sequence.frames_markers,
+            joint_rotations=sequence.joint_rotations,
+        )
+        tgt_to_src = {tgt: src for src, tgt in mapping.items()}
+
+        if args.view_markers or args.export_observer_json:
+            obs_path = args.export_observer_json or os.path.join("visualizer", "marker_observations.json")
+            os.makedirs(os.path.dirname(obs_path) or ".", exist_ok=True)
+            observer = MarkerObserver(source_parents, rest_cages, frames_cages, fps=getattr(sequence, "fps", 30.0))
+            observer.export_observation_json(obs_path, source_name=args.source, target_name=args.target)
+            print(f"[mark-target] Diagnostic 3D exporté vers {obs_path}")
+            if args.view_markers:
+                import webbrowser
+                viewer_html = os.path.abspath(os.path.join(os.path.dirname(__file__), "visualizer", "marker_viewer.html"))
+                webbrowser.open(f"file:///{viewer_html.replace(os.sep, '/')}")
     if args.use_temporal_prior:
         temporal_state = TemporalRetargetState(fps=getattr(sequence, "fps", 30.0))
         print("[mark-target] Moteur d'état temporel récursif (t-1 -> t) activé.")
@@ -162,7 +194,30 @@ def main():
             pts_t, mapping, skeleton.parents, ignored
         )
 
-        if not named and not left_still:
+        if use_cages:
+            cages_t = frames_cages[t] if t < len(frames_cages) else {}
+            bind_loc = getattr(skeleton, "bind_local_rotations", None) or {}
+            bind_w = skeleton.rest_rotations
+            Q_local = {}
+            Q_global = {}
+            for tgt_bone in skeleton.parents:
+                q_bind_l = bind_loc.get(tgt_bone, quat_identity())
+                q_bind_world = bind_w.get(tgt_bone, quat_identity())
+                src_bone = tgt_to_src.get(tgt_bone)
+                if src_bone and src_bone in cages_t and src_bone in rest_cages:
+                    pts_r = rest_cages[src_bone]
+                    pts_curr = cages_t[src_bone]
+                    R_move, _, _, _, _, rms, _ = kabsch_umeyama_rotation(pts_r, pts_curr)
+                    q_delta = matrix_to_quaternion(R_move)
+                    q_loc_delta = quat_mul(quat_mul(quat_inv(q_bind_world), q_delta), q_bind_world)
+                    Q_local[tgt_bone] = quat_normalize(quat_mul(q_bind_l, q_loc_delta))
+                    Q_global[tgt_bone] = quat_normalize(quat_mul(q_delta, q_bind_world))
+                else:
+                    Q_local[tgt_bone] = q_bind_l
+                    Q_global[tgt_bone] = q_bind_world
+            positions_t = {}
+            diagnostics = {}
+        elif not named and not left_still:
             # Si aucune correspondance, maintenir la pose au repos
             Q_global = {b: skeleton.rest_rotations[b].copy() for b in skeleton.parents}
             positions_t = {}
@@ -210,7 +265,8 @@ def main():
                 temporal_state.update_frame(Q_global)
             positions_t = {}
 
-        Q_local = global_to_local_hierarchy(Q_global, skeleton.parents)
+        if not use_cages:
+            Q_local = global_to_local_hierarchy(Q_global, skeleton.parents)
         if args.root_x_degrees != 0.0:
             Q_local = apply_euler_correction_to_root(
                 Q_local,

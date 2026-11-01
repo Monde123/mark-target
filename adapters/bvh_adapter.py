@@ -67,6 +67,7 @@ class BVHAdapter(SourceAdapter, TargetAdapter):
             root_rotations=[clip.world_rotations[root][i] for i in range(clip.n_frames)],
             root_translations=np.array(clip.world_positions[root], dtype=np.float64, copy=True),
             joint_rotations=joint_rotations,
+            parents={j.name: j.parent for j in clip.joints.values()},
             fps=clip.fps,
         )
 

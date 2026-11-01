@@ -78,6 +78,7 @@ class GLTFMixamoAdapter(TargetAdapter):
             return q
 
         Q_rest: Dict[str, np.ndarray] = {}
+        bind_local: Dict[str, np.ndarray] = {}
         parents: Dict[str, Optional[str]] = {}
         canonical_to_raw: Dict[str, str] = {}
 
@@ -85,6 +86,7 @@ class GLTFMixamoAdapter(TargetAdapter):
             c_name = node_name[j_idx]
             raw_name = nodes[j_idx].name or c_name
             Q_rest[c_name] = global_pose(j_idx)
+            bind_local[c_name] = node_local_quat[j_idx]
             canonical_to_raw[c_name] = raw_name
 
             p_idx = parent_of_idx.get(j_idx)
@@ -97,6 +99,7 @@ class GLTFMixamoAdapter(TargetAdapter):
             rest_rotations=Q_rest,
             parents=parents,
             raw_names=canonical_to_raw,
+            bind_local_rotations=bind_local,
             root_name="mixamorig:Hips",
             fps=30.0,
         )
@@ -179,11 +182,21 @@ class GLTFMixamoAdapter(TargetAdapter):
 
             # Extraire la trajectoire de quaternions [x, y, z, w]
             # Dans animation_clip, quat est [w, x, y, z]
+            # Pose de repos locale de secours pour préserver le bind pose
+            node_obj = gltf.nodes[node_idx]
+            if node_obj.rotation is not None:
+                r = node_obj.rotation
+                bind_q = np.array([r[3], r[0], r[1], r[2]], dtype=np.float64)
+            elif skeleton.bind_local_rotations and bone_name in skeleton.bind_local_rotations:
+                bind_q = skeleton.bind_local_rotations[bone_name]
+            else:
+                bind_q = quat_identity()
+
             quats_xyzw = []
             for f in animation_clip:
                 q = f["bones"].get(bone_name)
                 if q is None:
-                    q = quat_identity()
+                    q = bind_q
                 # Conversion [w, x, y, z] -> convention glTF [x, y, z, w]
                 quats_xyzw.append([q[1], q[2], q[3], q[0]])
 
