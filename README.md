@@ -1,7 +1,7 @@
 # mark-target : Moteur Universel de Retargeting Déterministe Temps-Réel
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-40%20passed%20(100%25)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-50%20passed%20(100%25)-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/platform-CPU%20pure%20(NumPy)-orange.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
 
@@ -25,7 +25,8 @@ python quickstart.py
 - Transfert cinématique de 102 frames MoCap vers l'avatar Mixamo `clara.glb`.
 - Durée moyenne : **~1.8 seconde** pour l'intégralité du clip (**17 ms/frame** incluant l'E/S binaire glTF).
 - Génération du fichier `clara_animated.glb` prêt pour le Web, Blender ou Unreal Engine.
-- **Visualisation 3D immédiate :** Glissez-déposez le fichier généré dans [gltf-viewer.donmccurdy.com](https://gltf-viewer.donmccurdy.com/) pour observer l'avatar en mouvement.
+- **Observateur 3D WebGL interactif :** Ouvrez simplement `visualizer/marker_viewer.html` dans votre navigateur pour inspecter en 3D les 4 marqueurs par os, les axes RGB locaux, les trajectoires et les métriques de rigidité en temps réel !
+- **Visualisation de l'avatar texturé :** Glissez-déposez le fichier `clara_animated.glb` dans [gltf-viewer.donmccurdy.com](https://gltf-viewer.donmccurdy.com/) pour observer l'avatar en mouvement sans distorsion.
 
 > Pour une démo purement MoCap BVH vers BVH :
 > ```bash
@@ -113,9 +114,15 @@ mark_target/
 │   ├── smoothing.py            # Bézier SQUAD sur S³ et De Casteljau
 │   └── kinematics.py           # Hiérarchie globale <-> locale
 ├── markers/                    # Traitement de surface et robustesse
+│   ├── virtual_cage.py         # Cages tétraédriques rigides 4 marqueurs (rang 3 plein)
+│   ├── observer.py             # Observateur cinématique & exportateur de diagnostic 3D
 │   ├── ransac_filter.py        # Consensus RANSAC et tenseur de Green-Lagrange
 │   ├── surface_sampling.py     # FPS (Farthest Point Sampling) et poids LBS
 │   └── tracker.py              # Extraction temporelle des marqueurs
+├── visualizer/                 # Observateur WebGL 3D interactif
+│   └── marker_viewer.html      # Visualiseur Three.js (sphères, trails, trièdres RGB)
+├── docs/                       # Références mathématiques et architectures
+│   └── MARKER_OBSERVER_AND_DIAGNOSTIC_SYSTEM.md # Spécification formelle du système
 ├── adapters/                   # Adaptateurs d'entrée/sortie
 │   ├── bvh_adapter.py          # Adaptateur bidirectionnel BVH
 │   ├── bvh_parse.py            # Parseur et exportateur BVH certifié sub-angulaire
@@ -125,7 +132,10 @@ mark_target/
 ├── examples/                   # Scripts de démonstration prêts à l'emploi
 │   ├── minimal_usage.py        # Démonstration minimale pure NumPy
 │   └── run_bvh_example.py      # Démonstration BVH autonome
-├── tests/                      # Suite de validation automatisée (40 tests PASS)
+├── tests/                      # Suite de validation automatisée (50 tests PASS)
+│   ├── test_virtual_cage.py       # Cages tétraédriques rigides & invariance SVD 3 DoF
+│   ├── test_marker_observer.py    # Métriques cinématiques & payload WebGL 3D
+│   ├── test_gltf_bind_pose_bridge.py # Préservation stricte du bind-pose glTF
 │   ├── test_pipeline_quality.py   # Invariants mathématiques & robustesse synthétique
 │   ├── test_auto_mapper.py        # Identification sémantique & alignement A-T Pose
 │   ├── test_temporal_state.py     # Mémoire d'état t-1 -> t & extrapolation so(3)
@@ -143,14 +153,14 @@ mark_target/
 
 ## 🧪 Suite de Tests & Qualité de Code
 
-Le projet intègre une suite de **40 tests automatisés** garantissant la non-régression, l'isolation des états et la précision mathématique :
+Le projet intègre une suite de **50 tests automatisés** garantissant la non-régression, l'isolation des états et la précision mathématique :
 
 ```bash
 python -m pytest tests/ -v
 ```
 
 ```text
-============================= 40 passed in ~3s =============================
+============================= 50 passed in ~2.6s =============================
 ```
 
 ### Invariants et tests couverts :
