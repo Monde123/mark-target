@@ -165,8 +165,8 @@ def cmd_bench(args=None):
 
 
 def cmd_test(args=None):
-    """Lance la suite complète de 52 tests."""
-    print("🧪 Exécution des 52 tests de non-régression...")
+    """Lance la suite complète de 55 tests."""
+    print("🧪 Exécution des 55 tests de non-régression...")
     try:
         ret = subprocess.run([sys.executable, "-m", "pytest", "tests/", "-v"])
         sys.exit(ret.returncode)
@@ -175,8 +175,48 @@ def cmd_test(args=None):
         sys.exit(130)
 
 
+def cmd_eval(args):
+    """Lance le banc d'évaluation scientifique de la qualité du retargeting."""
+    from benchmark.quality_evaluator import RetargetQualityEvaluator
+    source = args.source or "a_out_precise.bvh"
+    target = args.target or "clara.glb"
+
+    if not os.path.exists(source):
+        print(f"❌ Erreur : Fichier source introuvable : '{source}'")
+        sys.exit(1)
+    if not os.path.exists(target):
+        print(f"❌ Erreur : Fichier cible introuvable : '{target}'")
+        sys.exit(1)
+
+    print("⏳ Exécution de l'évaluation scientifique de la qualité en cours...")
+    sys.stdout.flush()
+    try:
+        card = RetargetQualityEvaluator.evaluate(
+            source_path=source,
+            target_path=target,
+            run_stress_tests=not args.no_stress,
+        )
+        print(card.format_console())
+
+        # Export Markdown
+        md_path = args.export_md or "RETARGET_QUALITY_REPORT.md"
+        with open(md_path, "w", encoding="utf-8") as f:
+            f.write(card.to_markdown())
+        print(f"📄 Rapport Markdown complet généré : {md_path}")
+
+        # Export JSON optionnel
+        if args.export_json:
+            import json
+            with open(args.export_json, "w", encoding="utf-8") as f:
+                json.dump(card.to_dict(), f, indent=2)
+            print(f"📦 Données JSON exportées dans : {args.export_json}")
+    except KeyboardInterrupt:
+        print("\n🛑 Évaluation interrompue.")
+        sys.exit(130)
+
+
 def main():
-    valid_subcommands = {"retarget", "demo", "view", "bench", "test"}
+    valid_subcommands = {"retarget", "demo", "view", "bench", "test", "eval"}
     is_help_only = len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help")
     has_subcmd = any(arg in valid_subcommands for arg in sys.argv[1:])
 
@@ -219,8 +259,17 @@ def main():
     p_bench.set_defaults(func=cmd_bench)
 
     # 5. test
-    p_test = subparsers.add_parser("test", help="Lance la suite de 52 tests unitaires (pytest)")
+    p_test = subparsers.add_parser("test", help="Lance la suite de 55 tests unitaires (pytest)")
     p_test.set_defaults(func=cmd_test)
+
+    # 6. eval
+    p_eval = subparsers.add_parser("eval", help="Lance l'évaluation scientifique de la qualité cinématique (/100 pts)")
+    p_eval.add_argument("source", nargs="?", default="a_out_precise.bvh", help="Fichier source (défaut: a_out_precise.bvh)")
+    p_eval.add_argument("target", nargs="?", default="clara.glb", help="Avatar cible (défaut: clara.glb)")
+    p_eval.add_argument("--export-md", default="RETARGET_QUALITY_REPORT.md", help="Chemin du rapport Markdown")
+    p_eval.add_argument("--export-json", default=None, help="Chemin d'export JSON des métriques")
+    p_eval.add_argument("--no-stress", action="store_true", help="Désactive les stress-tests de perturbations")
+    p_eval.set_defaults(func=cmd_eval)
 
     # On utilise parse_known_args pour accepter les arguments supplémentaires passés au moteur
     args, unknown = parser.parse_known_args()

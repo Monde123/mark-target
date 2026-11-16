@@ -1,7 +1,7 @@
 # mark-target : Moteur Universel de Retargeting Déterministe Temps-Réel
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-52%20passed%20(100%25)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-55%20passed%20(100%25)-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/platform-CPU%20pure%20(NumPy)-orange.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
 
@@ -43,17 +43,24 @@ target view
 ```
 Ouvre l'observateur WebGL Three.js dans votre navigateur pour inspecter les marqueurs, trièdres locaux et trajectoires.
 
-### 📊 4. Benchmark Scientifique Mesuré sur CPU
+### 📊 4. Évaluation Scientifique de la Qualité du Retargeting (Scorecard /100)
+```bash
+target eval
+# ou : target eval a_out_precise.bvh clara.glb
+```
+Calcule et affiche le **Scorecard Qualité normalisé sur 100 points** (Fidélité MPJPE, déviation angulaire SO(3), rigidité stricte des longueurs d'os, glissement de pied, réduction de jerk SQUAD, et stress-tests au bruit/occlusions) et génère automatiquement le rapport [RETARGET_QUALITY_REPORT.md](file:///D:/dev/mark_target/RETARGET_QUALITY_REPORT.md).
+
+### ⚡ 5. Benchmark CPU de Performance Brute
 ```bash
 target bench
 ```
-Mesure en temps réel les performances sur votre machine (latence SVD, FPS, résilience RANSAC, réduction de jerk SQUAD).
+Mesure en temps réel les performances de calcul CPU (latence SVD, FPS, résilience RANSAC).
 
-### 🧪 5. Suite de Tests Automatisée
+### 🧪 6. Suite de Tests Automatisée
 ```bash
 target test
 ```
-Lance les 52 tests unitaires de non-régression (100% PASS en ~3.5 secondes).
+Lance les 55 tests unitaires de non-régression (100% PASS).
 
 *(Note : `python cli.py` reste également utilisable comme alias direct).*
 
@@ -193,26 +200,30 @@ mark_target/
 │   ├── test_umeyama_and_smoothing.py  # Umeyama & Bézier SQUAD
 │   ├── test_mappings.py           # Ponts multi-formats isolés
 │   ├── test_universal_markers.py  # Reconstitution géométrique Kabsch
+│   ├── test_quality_evaluator.py      # Validation du banc de qualité & Scorecard
 │   └── test_end_to_end_real_assets.py # Pipeline réelle bout-en-bout
-├── cli.py                      # CLI simplifiée et moderne (retarget, demo, view, bench, test)
-├── quickstart.py               # Démonstration instantanée en 1 clic
-├── setup.py                    # Définition du package installable mark-target
-└── requirements.txt            # Dépendances de production
+├── benchmark/
+│   ├── quality_evaluator.py        # Moteur d'évaluation scientifique de la qualité (MPJPE, SO3, Jerk)
+│   └── run_comparative_benchmark.py # Micro-benchmarks de performance CPU
+├── cli.py                          # CLI unifiée et moderne (retarget, demo, view, bench, eval, test)
+├── quickstart.py                   # Démonstration instantanée en 1 clic
+├── setup.py                        # Définition du package installable mark-target
+└── requirements.txt                # Dépendances de production
 ```
 
 ---
 
 ## 🧪 Suite de Tests & Qualité de Code
 
-Le projet intègre une suite de **52 tests automatisés** garantissant la non-régression, l'isolation des états et la précision mathématique :
+Le projet intègre une suite de **55 tests automatisés** garantissant la non-régression, l'isolation des états et la précision mathématique :
 
 ```bash
-python cli.py test
+target test
 # ou : pytest tests/ -v
 ```
 
 ```text
-============================= 52 passed in ~3.5s =============================
+============================= 55 passed in ~24s =============================
 ```
 
 ### Invariants et tests couverts :
