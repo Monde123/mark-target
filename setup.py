@@ -6,6 +6,15 @@ setup(
     description="Universal 3D Surface Marker & Multi-Point Kabsch Retargeting Framework",
     author="Pipeline Signes Team",
     packages=find_packages(),
+    py_modules=["cli", "run_marker_retarget", "quickstart"],
+    package_data={
+        "": [
+            "visualizer/*.html",
+            "visualizer/*.js",
+            "visualizer/*.json",
+        ],
+    },
+    include_package_data=True,
     python_requires=">=3.8",
     install_requires=[
         "numpy>=1.20.0",
@@ -14,6 +23,12 @@ setup(
     extras_require={
         "gltf": ["pygltflib>=1.15.0"],
         "all": ["pygltflib>=1.15.0"],
+    },
+    entry_points={
+        "console_scripts": [
+            "target=cli:main",
+            "mark-target=cli:main",
+        ],
     },
     classifiers=[
         "Programming Language :: Python :: 3",

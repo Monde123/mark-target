@@ -1,11 +1,61 @@
 # mark-target : Moteur Universel de Retargeting Déterministe Temps-Réel
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-50%20passed%20(100%25)-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-52%20passed%20(100%25)-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/platform-CPU%20pure%20(NumPy)-orange.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-green.svg)]()
 
 Moteur géométrique de retargeting d'animation 3D ultra-rapide ($< 0.4\text{ ms}$/frame), 100% CPU en forme fermée (SVD), déterministe et sans dépendance GPU.
+
+---
+
+## ⚡ Commandes CLI Simplifiées : `target` (1 Seule Ligne !)
+
+Fini les commandes à rallonge avec 10 drapeaux techniques ! Vous pouvez désormais utiliser directement la commande native **`target`** :
+
+```bash
+# Installation en mode éditable pour activer la commande globale 'target'
+pip install -e .
+```
+
+### 🎯 1. Retargeting Instantané (1 seule ligne)
+```bash
+target a_out_precise.bvh clara.glb
+# ou : target retarget a_out_precise.bvh clara.glb
+```
+* **Détection automatique des formats** : `.bvh` $\to$ MoCap BVH, `.glb`/`.gltf` $\to$ Mixamo, `.vrm` $\to$ VRoid, `.pk` $\to$ Vision 3D.
+* **Paramètres de production activés par défaut** : Auto-mapping sémantique, alignement géométrique A-Pose $\leftrightarrow$ T-Pose, cages rigides 4 marqueurs, filtre RANSAC, mémoire temporelle $\mathbb{S}^3$ et lissage SQUAD $C^2$ (`--smoothing 0.35`).
+* **Fichier de sortie automatique** : génère directement `clara_a_out_precise_retargeted.glb`.
+* **Option visualiseur direct** : ajoutez `-v` ou `--view` pour lancer la 3D dès la fin du calcul :
+  ```bash
+  target a_out_precise.bvh clara.glb -v
+  ```
+
+### 🚀 2. Démonstration 1-Clic
+```bash
+target demo
+```
+Transfère le clip MoCap de test vers Clara et ouvre immédiatement le visualiseur 3D.
+
+### 🔭 3. Observateur 3D WebGL Interactif
+```bash
+target view
+```
+Ouvre l'observateur WebGL Three.js dans votre navigateur pour inspecter les marqueurs, trièdres locaux et trajectoires.
+
+### 📊 4. Benchmark Scientifique Mesuré sur CPU
+```bash
+target bench
+```
+Mesure en temps réel les performances sur votre machine (latence SVD, FPS, résilience RANSAC, réduction de jerk SQUAD).
+
+### 🧪 5. Suite de Tests Automatisée
+```bash
+target test
+```
+Lance les 52 tests unitaires de non-régression (100% PASS en ~3.5 secondes).
+
+*(Note : `python cli.py` reste également utilisable comme alias direct).*
 
 ---
 
@@ -144,6 +194,7 @@ mark_target/
 │   ├── test_mappings.py           # Ponts multi-formats isolés
 │   ├── test_universal_markers.py  # Reconstitution géométrique Kabsch
 │   └── test_end_to_end_real_assets.py # Pipeline réelle bout-en-bout
+├── cli.py                      # CLI simplifiée et moderne (retarget, demo, view, bench, test)
 ├── quickstart.py               # Démonstration instantanée en 1 clic
 ├── setup.py                    # Définition du package installable mark-target
 └── requirements.txt            # Dépendances de production
@@ -153,14 +204,15 @@ mark_target/
 
 ## 🧪 Suite de Tests & Qualité de Code
 
-Le projet intègre une suite de **50 tests automatisés** garantissant la non-régression, l'isolation des états et la précision mathématique :
+Le projet intègre une suite de **52 tests automatisés** garantissant la non-régression, l'isolation des états et la précision mathématique :
 
 ```bash
-python -m pytest tests/ -v
+python cli.py test
+# ou : pytest tests/ -v
 ```
 
 ```text
-============================= 50 passed in ~2.6s =============================
+============================= 52 passed in ~3.5s =============================
 ```
 
 ### Invariants et tests couverts :
