@@ -3,11 +3,11 @@
 > **Branche de Développement :** `dev`  
 > **Auteur :** Pipeline Signes Team / Core Engineering  
 > **Statut :** Spécification & Plan d'Implémentation Actif  
-> **Objectif :** Transformer le prototype mathématique en une suite de production temps-réel capable de convertir une **vidéo 2D brute** en un **personnage 3D (.glb) en T-Pose animé**, avec visualisation 3D des marqueurs et stabilité biomécanique absolue.
+> **Objectif :** Moteur de retargeting cinématique 3D universel en temps réel (100% CPU en forme fermée SVD) capable de transférer des **séquences 3D spatiales (MoCap BVH, nuages de marqueurs ou maillages 3D déformés)** vers un **personnage 3D (.glb / .vrm) animé**, avec visualisation 3D des marqueurs et stabilité biomécanique absolue.
 
 ---
 
-## 1. Réponses Architecturales aux Questions Clés
+## 1. Réponses Architecturales & Clarification du Périmètre
 
 ### Q1 : Est-il possible d'observer/visualiser les marqueurs directement sur les modèles 3D ?
 **OUI, et c'est un atout majeur de débogage.**  
@@ -15,25 +15,27 @@ Dans l'implémentation de `mark-target`, chaque marqueur correspond à un sommet
 1. **Mode Debug GLB/VRM :** Injecter des sphères 3D colorées (primitives géométriques sans poids de skinning) aux coordonnées des sommets sélectionnés. Chaque os a sa propre couleur (ex: avant-bras en cyan, pouce en violet).
 2. **Visualiseur Web / Viewport temps réel :** Afficher un nuage de points colorés superposé sur la surface semi-transparente du modèle 3D pour inspecter la répartition du Farthest Point Sampling (FPS) et détecter les déformations de peau anormales.
 
-### Q2 : Est-il possible de prendre en entrée une vidéo 2D et de fournir en sortie un avatar `.glb` (fourni en T-Pose) ?
-**OUI, c'est précisément le pipeline cible de cette roadmap.**  
-La chaîne de traitement complète s'organise ainsi :
+### Q2 : Quel est le périmètre exact de mark-target par rapport à la vidéo ?
+**`mark-target` est un moteur de retargeting cinématique 3D aval (backend), et NON un système de vision par ordinateur.**  
+L'extraction de pose à partir d'une vidéo 2D (MP4/WebM) relève de modèles de vision externes (MediaPipe, HybrIK, 4D-Humans, SMPL-X). Le pipeline de traitement s'articule ainsi :
 ```
-[ Vidéo 2D brute (MP4/WebM) ]
+[ Source Amont : Vidéo 2D ] (Hors périmètre mark-target)
              ↓
-[ Estimateur de Maillage 3D : HybrIK / 4D-Humans / MediaPipe / SMPL-X ]
+[ Estimateur de Pose / Vision Amont : MediaPipe / HybrIK / SMPL-X ]
              ↓
-[ Séquence de sommets 3D temporels V(t) ]
+=================== ENTRÉE MARK-TARGET ===================
+[ Séquence de coordonnées 3D : Marqueurs, Sommets V(t) ou BVH ]
              ↓
-[ mark-target : Échantillonnage FPS + Marqueurs virtuels ]
+[ mark-target : Cages rigides / Échantillonnage FPS ]
              ↓
-[ Modèle Cible .glb en T-Pose (Bind Pose) ]
+[ Modèle Cible .glb / .vrm en Bind Pose (T-Pose / A-Pose) ]
              ↓
 [ Solveur Algébrique : Kabsch-Umeyama + RANSAC + Bézier SQUAD ]
              ↓
-[ Fichier .glb final animé en coordonnées locales ]
+=================== SORTIE MARK-TARGET ===================
+[ Fichier .glb / .vrm final animé avec canaux glTF conformes ]
 ```
-Le modèle cible `.glb` fourni en T-Pose fournit la géométrie de repos ($P_{\text{rest}}$). L'animation résolue est ensuite encodée directement sous forme d'une piste d'animation glTF (`AnimationSampler` et `AnimationChannel`) sans altérer le maillage de base.
+Le modèle cible `.glb` en Bind Pose fournit la géométrie de repos ($P_{\text{rest}}$). L'animation résolue est ensuite encodée directement sous forme de pistes d'animation glTF (`AnimationSampler` et `AnimationChannel`) sans altérer le maillage de base.
 
 ---
 
