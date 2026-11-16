@@ -32,6 +32,7 @@ from markers.virtual_cage import VirtualBoneCageGenerator
 from markers.observer import MarkerObserver
 from core.kabsch import kabsch_umeyama_rotation
 from core.geometry import matrix_to_quaternion, quat_mul, quat_inv, quat_normalize, quat_identity
+from markers.ransac_filter import ransac_kabsch_alignment
 
 
 def main():
@@ -102,15 +103,21 @@ def main():
         raise ValueError("La source ne contient aucune frame de mouvement.")
 
     # Résolution du mapping (explicite, auto-map ou fallback automatique)
+    align_map = {}
     if args.auto_map:
         mapper = BufferRigMapper(
             source_bones=list(sequence.rest_markers.keys()),
             target_bones=list(skeleton.parents.keys()),
             source_rest_positions=sequence.rest_markers,
+            target_rest_positions=getattr(skeleton, "rest_positions", None),
             source_parents=getattr(sequence, "parents", {}),
             target_parents=skeleton.parents,
         )
         mapping = mapper.get_source_to_target_bone_map()
+        align_map = {
+            tgt: mapper.get_source_to_target_alignment(src, tgt)
+            for src, tgt in mapping.items()
+        }
         print(f"[mark-target] Auto-Mapper activé : {len(mapping)} os appariés via l'ossature tampon.")
     else:
         mapping = MappingRegistry.get_mapping(args.source_type, args.target_type)
@@ -121,10 +128,15 @@ def main():
                 source_bones=list(sequence.rest_markers.keys()),
                 target_bones=list(skeleton.parents.keys()),
                 source_rest_positions=sequence.rest_markers,
+                target_rest_positions=getattr(skeleton, "rest_positions", None),
                 source_parents=getattr(sequence, "parents", {}),
                 target_parents=skeleton.parents,
             )
             mapping = mapper.get_source_to_target_bone_map()
+            align_map = {
+                tgt: mapper.get_source_to_target_alignment(src, tgt)
+                for src, tgt in mapping.items()
+            }
             print(f"[mark-target] Auto-Mapper automatique : {len(mapping)} os appariés.")
 
     hits = _mapping_hits(sequence.rest_markers, mapping, skeleton.parents)
@@ -207,14 +219,30 @@ def main():
                 if src_bone and src_bone in cages_t and src_bone in rest_cages:
                     pts_r = rest_cages[src_bone]
                     pts_curr = cages_t[src_bone]
-                    R_move, _, _, _, _, rms, _ = kabsch_umeyama_rotation(pts_r, pts_curr)
+                    if args.use_ransac and len(pts_r) >= 4:
+                        R_move, _, rms, _ = ransac_kabsch_alignment(pts_r, pts_curr, inlier_threshold=0.05)
+                    else:
+                        R_move, _, _, _, _, rms, _ = kabsch_umeyama_rotation(pts_r, pts_curr)
                     q_delta = matrix_to_quaternion(R_move)
-                    q_loc_delta = quat_mul(quat_mul(quat_inv(q_bind_world), q_delta), q_bind_world)
-                    Q_local[tgt_bone] = quat_normalize(quat_mul(q_bind_l, q_loc_delta))
-                    Q_global[tgt_bone] = quat_normalize(quat_mul(q_delta, q_bind_world))
+
+                    # Application de la pré-rotation d'alignement de repos (A-Pose <-> T-Pose)
+                    q_align = align_map.get(tgt_bone, quat_identity())
+                    q_delta_aligned = quat_normalize(quat_mul(quat_mul(q_align, q_delta), quat_inv(q_align)))
+
+                    q_loc_delta = quat_mul(quat_mul(quat_inv(q_bind_world), q_delta_aligned), q_bind_world)
+                    q_anim_loc = quat_normalize(quat_mul(q_bind_l, q_loc_delta))
+                    q_anim_world = quat_normalize(quat_mul(q_delta_aligned, q_bind_world))
+
+                    if temporal_state is not None:
+                        q_anim_world = temporal_state.regularize_quaternion(tgt_bone, q_anim_world)
+
+                    Q_local[tgt_bone] = q_anim_loc
+                    Q_global[tgt_bone] = q_anim_world
                 else:
                     Q_local[tgt_bone] = q_bind_l
                     Q_global[tgt_bone] = q_bind_world
+            if temporal_state is not None:
+                temporal_state.update_frame(Q_global)
             positions_t = {}
             diagnostics = {}
         elif not named and not left_still:

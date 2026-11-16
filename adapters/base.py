@@ -19,6 +19,7 @@ class TargetSkeleton:
     parents: Dict[str, Optional[str]]       # {bone_name: parent_name or None}
     raw_names: Optional[Dict[str, str]] = None  # {nom_canonique: nom_dans_le_fichier}
     bind_local_rotations: Optional[Dict[str, np.ndarray]] = None  # {bone_name: quat_local [w, x, y, z]}
+    rest_positions: Optional[Dict[str, np.ndarray]] = None  # {bone_name: position_3d_repos}
     root_name: str = "Hips"
     fps: float = 30.0
 
@@ -50,7 +51,7 @@ class TargetAdapter(ABC):
 
     @abstractmethod
     def load_skeleton(self, target_model_path: str, **kwargs) -> TargetSkeleton:
-        """Extrait la structure du squelette cible (bind pose et hiérarchie)."""
+        """Charge la bind pose et la hiérarchie du modèle cible."""
         pass
 
     @abstractmethod
@@ -62,5 +63,5 @@ class TargetAdapter(ABC):
         skeleton: TargetSkeleton,
         **kwargs
     ) -> None:
-        """Exporte l'animation résolue dans le format final désiré (GLB, VRM, BVH)."""
+        """Exporte l'animation résolue sur le modèle cible."""
         pass

@@ -65,6 +65,7 @@ class GLTFMixamoAdapter(TargetAdapter):
         joint_indices = sorted({j for skin in gltf.skins for j in skin.joints})
 
         cache_q: Dict[int, np.ndarray] = {}
+        cache_pos: Dict[int, np.ndarray] = {}
 
         def global_pose(i: int) -> np.ndarray:
             if i in cache_q:
@@ -77,7 +78,20 @@ class GLTFMixamoAdapter(TargetAdapter):
             cache_q[i] = q
             return q
 
+        def global_position(i: int) -> np.ndarray:
+            if i in cache_pos:
+                return cache_pos[i]
+            if i not in parent_of_idx:
+                p = node_local_trans[i]
+            else:
+                p_parent = global_position(parent_of_idx[i])
+                q_parent = global_pose(parent_of_idx[i])
+                p = p_parent + rotate_vector(q_parent, node_local_trans[i])
+            cache_pos[i] = p
+            return p
+
         Q_rest: Dict[str, np.ndarray] = {}
+        Pos_rest: Dict[str, np.ndarray] = {}
         bind_local: Dict[str, np.ndarray] = {}
         parents: Dict[str, Optional[str]] = {}
         canonical_to_raw: Dict[str, str] = {}
@@ -86,6 +100,7 @@ class GLTFMixamoAdapter(TargetAdapter):
             c_name = node_name[j_idx]
             raw_name = nodes[j_idx].name or c_name
             Q_rest[c_name] = global_pose(j_idx)
+            Pos_rest[c_name] = global_position(j_idx)
             bind_local[c_name] = node_local_quat[j_idx]
             canonical_to_raw[c_name] = raw_name
 
@@ -100,6 +115,7 @@ class GLTFMixamoAdapter(TargetAdapter):
             parents=parents,
             raw_names=canonical_to_raw,
             bind_local_rotations=bind_local,
+            rest_positions=Pos_rest,
             root_name="mixamorig:Hips",
             fps=30.0,
         )

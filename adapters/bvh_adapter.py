@@ -79,6 +79,7 @@ class BVHAdapter(SourceAdapter, TargetAdapter):
             rest_rotations={name: joint.bone_rest.copy() for name, joint in clip.joints.items()},
             parents={name: joint.parent for name, joint in clip.joints.items()},
             raw_names={name: joint.raw_name for name, joint in clip.joints.items()},
+            rest_positions={name: pos.reshape(-1).copy() for name, pos in clip.rest_positions.items()},
             root_name=clip.roots[0],
             fps=clip.fps,
         )

@@ -106,10 +106,15 @@ def run_quickstart():
         source_bones=list(sequence.rest_markers.keys()),
         target_bones=list(skeleton.parents.keys()),
         source_rest_positions=sequence.rest_markers,
+        target_rest_positions=getattr(skeleton, "rest_positions", None),
         source_parents=source_parents,
         target_parents=skeleton.parents,
     )
     mapping = mapper.get_source_to_target_bone_map()
+    align_map = {
+        tgt: mapper.get_source_to_target_alignment(src, tgt)
+        for src, tgt in mapping.items()
+    }
 
     # Inversion du dictionnaire pour accès rapide target_bone -> source_bone
     tgt_to_src = {tgt: src for src, tgt in mapping.items()}
@@ -141,11 +146,15 @@ def run_quickstart():
                 R_move, _, _, _, _, rms, _ = kabsch_umeyama_rotation(pts_r, pts_t)
                 q_src_delta = matrix_to_quaternion(R_move)
 
+                # Application de la pré-rotation d'alignement anatomique (A-Pose <-> T-Pose)
+                q_align = align_map.get(tgt_bone, quat_identity())
+                q_src_aligned = quat_normalize(quat_mul(quat_mul(q_align, q_src_delta), quat_inv(q_align)))
+
                 # Conjugaison dans le repère local du joint cible :
-                # q_loc_delta = q_bind_w^(-1) * q_src_delta * q_bind_w
-                q_loc_delta = quat_mul(quat_mul(quat_inv(q_bind_w), q_src_delta), q_bind_w)
+                # q_loc_delta = q_bind_w^(-1) * q_src_aligned * q_bind_w
+                q_loc_delta = quat_mul(quat_mul(quat_inv(q_bind_w), q_src_aligned), q_bind_w)
                 q_anim_loc = quat_normalize(quat_mul(q_bind_loc, q_loc_delta))
-                q_anim_world = quat_normalize(quat_mul(q_src_delta, q_bind_w))
+                q_anim_world = quat_normalize(quat_mul(q_src_aligned, q_bind_w))
             else:
                 # Os non animé : préservation stricte de la pose de repos locale
                 q_anim_loc = q_bind_loc

@@ -99,29 +99,55 @@ def de_casteljau_bezier_3d(control_points: Sequence[np.ndarray], t: float) -> np
 def smooth_quaternion_trajectory(
     quaternions: Sequence[np.ndarray],
     smoothing_factor: float = 0.35,
+    use_squad: bool = True,
 ) -> List[np.ndarray]:
     """
     Filtre temporel adaptatif préservant les orientations :
-    Applique une fenêtre glissante pondérée par SLERP pour supprimer le jitter haute fréquence.
+    Applique une interpolation spline SQUAD (C2) ou SLERP pour supprimer le jitter haute fréquence.
     
     Paramètres:
         quaternions: liste de N quaternions [w, x, y, z]
         smoothing_factor: intensité du lissage (0.0 = aucun, 0.5 = modéré, 0.9 = fort)
+        use_squad: si True, utilise la spline sphérique Bézier SQUAD (Shoemake 1985)
     """
     n = len(quaternions)
     if n <= 2 or smoothing_factor <= 0.0:
         return [quat_normalize(q) for q in quaternions]
 
-    alpha = np.clip(smoothing_factor, 0.0, 0.8)
-    smoothed = [quat_normalize(quaternions[0])]
-
+    # Alignement d'hémisphère préalable pour éliminer les sauts de signe S³
+    aligned = [quat_normalize(quaternions[0])]
     for i in range(1, n):
         q_curr = quat_normalize(quaternions[i])
-        # SLERP entre la frame précédente lissée et la frame courante brute
-        q_smooth = quat_slerp(smoothed[-1], q_curr, 1.0 - alpha)
-        smoothed.append(q_smooth)
+        if float(np.dot(q_curr, aligned[-1])) < 0.0:
+            q_curr = -q_curr
+        aligned.append(q_curr)
 
-    return smoothed
+    alpha = np.clip(smoothing_factor, 0.0, 0.85)
+
+    if use_squad and n >= 4:
+        # Calcul des points de contrôle SQUAD intermédiaires s_i sur la variété S³
+        s = [aligned[0]] * n
+        for i in range(1, n - 1):
+            s[i] = compute_squad_control_point(aligned[i - 1], aligned[i], aligned[i + 1])
+        s[0] = compute_squad_control_point(aligned[0], aligned[0], aligned[1])
+        s[-1] = compute_squad_control_point(aligned[-2], aligned[-1], aligned[-1])
+
+        smoothed = [aligned[0]]
+        for i in range(1, n - 1):
+            # Évaluation SQUAD centrée à partir des voisins (i-1 et i+1)
+            q_squad_pred = quat_squad(aligned[i - 1], aligned[i + 1], s[i - 1], s[i + 1], 0.5)
+            # Pondération adaptative entre la frame courante et la prédiction SQUAD C²
+            q_filtered = quat_slerp(aligned[i], q_squad_pred, alpha)
+            smoothed.append(q_filtered)
+        smoothed.append(aligned[-1])
+        return smoothed
+    else:
+        # Fallback SLERP récursif (si n < 4)
+        smoothed = [aligned[0]]
+        for i in range(1, n):
+            q_smooth = quat_slerp(smoothed[-1], aligned[i], 1.0 - alpha)
+            smoothed.append(q_smooth)
+        return smoothed
 
 
 def smooth_translation_trajectory(

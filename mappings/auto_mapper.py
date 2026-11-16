@@ -244,6 +244,26 @@ class BufferRigMapper:
 
             self.source_align_rotations[src_bone] = quat_identity()
 
+        # Alignement Target -> Buffer
+        for tgt_bone, std_bone in self.target_to_standard.items():
+            u_canon = CanonicalBufferArmature.get_canonical_direction(std_bone)
+            if u_canon is None:
+                self.target_align_rotations[tgt_bone] = quat_identity()
+                continue
+
+            children = [b for b, p in self.target_parents.items() if p == tgt_bone]
+            if children and tgt_bone in self.target_rest_pos and children[0] in self.target_rest_pos:
+                p_b = np.asarray(self.target_rest_pos[tgt_bone], dtype=np.float64).reshape(-1)
+                p_c = np.asarray(self.target_rest_pos[children[0]], dtype=np.float64).reshape(-1)
+                diff = p_c - p_b
+                norm = float(np.linalg.norm(diff))
+                if norm > 1e-6:
+                    u_tgt = (diff / norm).reshape(-1)
+                    self.target_align_rotations[tgt_bone] = quat_from_two_vectors(u_tgt, u_canon)
+                    continue
+
+            self.target_align_rotations[tgt_bone] = quat_identity()
+
     def get_source_to_target_bone_map(self) -> Dict[str, str]:
         """Retourne la table directe {source_bone: target_bone} résolue via le tampon."""
         direct: Dict[str, str] = {}
@@ -251,6 +271,15 @@ class BufferRigMapper:
             if std_bone in self.standard_to_target:
                 direct[src_bone] = self.standard_to_target[std_bone]
         return direct
+
+    def get_source_to_target_alignment(self, src_bone: str, tgt_bone: str) -> np.ndarray:
+        """
+        Calcule le quaternion d'alignement de pose au repos Source -> Target.
+        q_align = q_align_target^(-1) * q_align_source
+        """
+        q_s = self.source_align_rotations.get(src_bone, quat_identity())
+        q_t = self.target_align_rotations.get(tgt_bone, quat_identity())
+        return quat_normalize(quat_mul(quat_inv(q_t), q_s))
 
     def align_source_rotation_to_buffer(self, src_bone: str, q_src: np.ndarray) -> np.ndarray:
         """Applique la pré-rotation de repos pour amener la rotation en espace tampon."""
