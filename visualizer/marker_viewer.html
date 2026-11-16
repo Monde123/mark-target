@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Marker Observer & Diagnostic System - MarkTarget</title>
+    <title>3D Marker Observer & Body Tracker - MarkTarget</title>
     <style>
         :root {
             --bg-color: #0f1117;
@@ -55,7 +55,7 @@
             padding: 10px 18px;
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 14px;
             backdrop-filter: blur(10px);
             box-shadow: 0 4px 16px rgba(0,0,0,0.4);
         }
@@ -78,7 +78,6 @@
             border: 1px solid rgba(88, 166, 255, 0.3);
         }
 
-        /* File loader button */
         .btn {
             background: #21262d;
             border: 1px solid var(--border-color);
@@ -109,7 +108,17 @@
             background: #2ea043;
         }
 
-        #file-input {
+        .btn-blue {
+            background: #1f6feb;
+            border-color: rgba(240, 246, 252, 0.1);
+            color: #ffffff;
+        }
+
+        .btn-blue:hover {
+            background: #388bfd;
+        }
+
+        #file-input, #glb-input {
             display: none;
         }
 
@@ -118,7 +127,7 @@
             position: absolute;
             top: 16px;
             right: 20px;
-            width: 320px;
+            width: 330px;
             max-height: calc(100vh - 120px);
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -129,18 +138,18 @@
             box-shadow: 0 4px 20px rgba(0,0,0,0.5);
             display: flex;
             flex-direction: column;
-            gap: 14px;
+            gap: 12px;
             overflow-y: auto;
         }
 
         .panel-title {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             color: var(--text-secondary);
             border-bottom: 1px solid var(--border-color);
-            padding-bottom: 6px;
+            padding-bottom: 4px;
         }
 
         .metric-row {
@@ -148,7 +157,7 @@
             justify-content: space-between;
             align-items: center;
             font-size: 12px;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }
 
         .metric-label {
@@ -164,7 +173,7 @@
         .legend-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            gap: 6px;
             font-size: 11px;
         }
 
@@ -268,7 +277,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(15, 17, 23, 0.85);
+            background: rgba(15, 17, 23, 0.88);
             z-index: 100;
             align-items: center;
             justify-content: center;
@@ -276,6 +285,10 @@
             color: var(--accent-cyan);
             font-size: 20px;
             font-weight: 600;
+        }
+
+        select, input[type="range"] {
+            accent-color: var(--accent-cyan);
         }
 
         select {
@@ -289,47 +302,102 @@
             outline: none;
         }
     </style>
-    <!-- Three.js + OrbitControls -->
+    <!-- Three.js + OrbitControls + GLTFLoader -->
     <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://unpkg.com/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
 </head>
 <body>
 
-    <div id="drop-zone">Déposez votre fichier JSON d'observation ici (.json)</div>
+    <div id="drop-zone">Déposez votre fichier ici (.json d'observation OU .glb animé)</div>
     <div id="canvas-container"></div>
 
     <header>
         <h1>
             <span>🔭</span>
-            <span>Marker Observer 3D</span>
+            <span>Marker & Body Observer</span>
         </h1>
-        <span class="badge" id="badge-source">Aucune donnée chargée</span>
+        <span class="badge" id="badge-source">En attente de données</span>
         <label for="file-input" class="btn btn-primary">
             📁 Ouvrir JSON
         </label>
         <input type="file" id="file-input" accept=".json">
+
+        <label for="glb-input" class="btn btn-blue">
+            🧍 Charger Avatar 3D (.glb)
+        </label>
+        <input type="file" id="glb-input" accept=".glb,.gltf">
     </header>
 
     <div id="diagnostic-panel">
-        <div class="panel-title">Informations du Clip</div>
+        <div class="panel-title">Informations Générales</div>
         <div class="metric-row">
-            <span class="metric-label">Source :</span>
+            <span class="metric-label">Observation :</span>
             <span class="metric-val" id="info-source">-</span>
+        </div>
+        <div class="metric-row">
+            <span class="metric-label">Modèle 3D :</span>
+            <span class="metric-val" id="info-model" style="color: var(--accent-cyan);">Non chargé</span>
         </div>
         <div class="metric-row">
             <span class="metric-label">Frames / FPS :</span>
             <span class="metric-val" id="info-frames">-</span>
         </div>
         <div class="metric-row">
-            <span class="metric-label">Nombre d'os :</span>
-            <span class="metric-val" id="info-bones">-</span>
-        </div>
-        <div class="metric-row">
             <span class="metric-label">Architecture :</span>
             <span class="metric-val" style="color: var(--accent-green);">4-Marker Tetrahedrons (3 DoF)</span>
         </div>
 
-        <div class="panel-title" style="margin-top: 8px;">Sélection de l'os</div>
+        <div class="panel-title" style="margin-top: 6px;">Superposition Avatar 3D (Corps Texturé)</div>
+        <div style="display: flex; flex-direction: column; gap: 7px;">
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-model" checked>
+                <span>Afficher Maillage Corporel 3D</span>
+            </label>
+            <div class="metric-row">
+                <span class="metric-label">Opacité Maillage (Rayons X) :</span>
+                <span class="metric-val" id="model-opacity-val">65%</span>
+            </div>
+            <input type="range" id="slider-opacity" min="0" max="100" value="65" style="width: 100%;">
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-model-markers" checked>
+                <span>Marqueurs sphériques fixés aux os</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-model-skeleton" checked>
+                <span>Squelette interne (Bones)</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-model-axes" checked>
+                <span>Trièdres RGB sur le modèle</span>
+            </label>
+        </div>
+
+        <div class="panel-title" style="margin-top: 6px;">Cages MoCap & Trajectoires</div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-skeleton" checked>
+                <span>Squelette MoCap Filaire</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-markers" checked>
+                <span>Sphères Marqueurs MoCap (M0-M3)</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-cages" checked>
+                <span>Cages Tétraédriques Rigides</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-axes" checked>
+                <span>Trièdres RGB MoCap</span>
+            </label>
+            <label class="toggle-label">
+                <input type="checkbox" id="toggle-trails" checked>
+                <span>Trajectoires Temporelles (Trails)</span>
+            </label>
+        </div>
+
+        <div class="panel-title" style="margin-top: 6px;">Sélection & Diagnostic d'Os</div>
         <select id="bone-select">
             <option value="all">-- Observer tous les os --</option>
         </select>
@@ -353,7 +421,7 @@
             </div>
         </div>
 
-        <div class="panel-title" style="margin-top: 8px;">Légende des Marqueurs</div>
+        <div class="panel-title" style="margin-top: 6px;">Légende des 4 Marqueurs</div>
         <div class="legend-grid">
             <div class="legend-item">
                 <div class="legend-dot" style="background: #00d2ff;"></div>
@@ -371,30 +439,6 @@
                 <div class="legend-dot" style="background: #ffcc00;"></div>
                 <span>M3: Axe Twist</span>
             </div>
-        </div>
-
-        <div class="panel-title" style="margin-top: 8px;">Options d'Affichage</div>
-        <div style="display: flex; flex-direction: column; gap: 8px;">
-            <label class="toggle-label">
-                <input type="checkbox" id="toggle-skeleton" checked>
-                <span>Afficher Squelette Filaire</span>
-            </label>
-            <label class="toggle-label">
-                <input type="checkbox" id="toggle-markers" checked>
-                <span>Afficher Sphères Marqueurs</span>
-            </label>
-            <label class="toggle-label">
-                <input type="checkbox" id="toggle-cages" checked>
-                <span>Afficher Cages Tétraédriques</span>
-            </label>
-            <label class="toggle-label">
-                <input type="checkbox" id="toggle-axes" checked>
-                <span>Afficher Trièdres RGB Locaux</span>
-            </label>
-            <label class="toggle-label">
-                <input type="checkbox" id="toggle-trails" checked>
-                <span>Afficher Trajectoires (Trails)</span>
-            </label>
         </div>
     </div>
 
@@ -423,15 +467,23 @@
         // --- State ---
         let observationData = null;
         let currentFrame = 0;
+        let totalFramesCount = 100;
         let isPlaying = false;
         let playSpeed = 1.0;
-        let animationFrameId = null;
         let lastTimestamp = performance.now();
         let frameAccumulator = 0;
+        let fps = 30.0;
+
+        // Model 3D State
+        let gltfModel = null;
+        let animationMixer = null;
+        let skeletonHelper = null;
+        let modelMarkersList = [];
+        let modelAxesList = [];
+        let currentModelOpacity = 0.65;
 
         // Three.js Core
         let scene, camera, renderer, controls;
-        let skeletonLines = null;
         let markerMeshGroup = new THREE.Group();
         let cageLinesGroup = new THREE.Group();
         let axesGroup = new THREE.Group();
@@ -441,18 +493,19 @@
         const MAX_TRAIL_LENGTH = 30;
         let markerHistory = {};
 
-        // --- Init Three.js Scene ---
+        // --- Init Scene ---
         function initScene() {
             const container = document.getElementById('canvas-container');
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x0f1117);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.05, 100);
-            camera.position.set(0, 1.2, 3.5);
+            camera.position.set(0, 1.2, 3.2);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.outputColorSpace = THREE.SRGBColorSpace;
             renderer.shadowMap.enabled = true;
             container.appendChild(renderer.domElement);
 
@@ -462,19 +515,23 @@
             controls.target.set(0, 0.9, 0);
 
             // Lights
-            const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+            const ambient = new THREE.AmbientLight(0xffffff, 1.0);
             scene.add(ambient);
 
-            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
             dirLight.position.set(5, 10, 7);
             scene.add(dirLight);
 
-            // Infinite Grid
+            const backLight = new THREE.DirectionalLight(0x58a6ff, 0.6);
+            backLight.position.set(-5, 5, -5);
+            scene.add(backLight);
+
+            // Grid
             const grid = new THREE.GridHelper(10, 20, 0x30363d, 0x1f242c);
             grid.position.y = 0;
             scene.add(grid);
 
-            // Coordinate origin gizmo
+            // Origin axes
             const axesHelper = new THREE.AxesHelper(0.3);
             scene.add(axesHelper);
 
@@ -495,17 +552,19 @@
         }
 
         function animate(timestamp = performance.now()) {
-            animationFrameId = requestAnimationFrame(animate);
+            requestAnimationFrame(animate);
 
             const dt = (timestamp - lastTimestamp) / 1000;
             lastTimestamp = timestamp;
 
-            if (isPlaying && observationData && observationData.frames.length > 0) {
-                frameAccumulator += dt * playSpeed * observationData.metadata.fps;
+            const activeFps = observationData ? observationData.metadata.fps : fps;
+
+            if (isPlaying && totalFramesCount > 0) {
+                frameAccumulator += dt * playSpeed * activeFps;
                 if (frameAccumulator >= 1.0) {
                     const step = Math.floor(frameAccumulator);
                     frameAccumulator -= step;
-                    currentFrame = (currentFrame + step) % observationData.frames.length;
+                    currentFrame = (currentFrame + step) % totalFramesCount;
                     document.getElementById('scrubber').value = currentFrame;
                     renderFrame(currentFrame);
                 }
@@ -515,23 +574,33 @@
             renderer.render(scene, camera);
         }
 
-        // --- Render Specific Frame ---
+        // --- Render Frame ---
         function renderFrame(frameIdx) {
-            if (!observationData || frameIdx >= observationData.frames.length) return;
+            const activeFps = observationData ? observationData.metadata.fps : fps;
+
+            // 1. Synchronisation de l'animation de l'Avatar 3D (.glb)
+            if (animationMixer) {
+                const timeInSec = frameIdx / activeFps;
+                animationMixer.setTime(timeInSec);
+                if (skeletonHelper) skeletonHelper.update();
+            }
+
+            // Update Time display
+            const timeSec = (frameIdx / activeFps).toFixed(2);
+            document.getElementById('time-display').innerText = 
+                `${frameIdx + 1} / ${totalFramesCount} (${timeSec}s)`;
+
+            if (!observationData || !observationData.frames || frameIdx >= observationData.frames.length) {
+                return;
+            }
 
             const frameData = observationData.frames[frameIdx];
             const axesData = observationData.axes ? observationData.axes[frameIdx] : null;
             const selectedBone = document.getElementById('bone-select').value;
 
-            // Clear previous dynamically created elements
             clearGroup(markerMeshGroup);
             clearGroup(cageLinesGroup);
             clearGroup(axesGroup);
-
-            // Update Time display
-            const timeSec = (frameIdx / observationData.metadata.fps).toFixed(2);
-            document.getElementById('time-display').innerText = 
-                `${frameIdx + 1} / ${observationData.frames.length} (${timeSec}s)`;
 
             const showSkeleton = document.getElementById('toggle-skeleton').checked;
             const showMarkers = document.getElementById('toggle-markers').checked;
@@ -539,7 +608,6 @@
             const showAxes = document.getElementById('toggle-axes').checked;
             const showTrails = document.getElementById('toggle-trails').checked;
 
-            // Marker Materials
             const matM0 = new THREE.MeshStandardMaterial({ color: 0x00d2ff, roughness: 0.3 }); // Cyan Joint
             const matM1 = new THREE.MeshStandardMaterial({ color: 0xff00ff, roughness: 0.3 }); // Magenta Extremity
             const matM2 = new THREE.MeshStandardMaterial({ color: 0x00ff66, roughness: 0.3 }); // Green Flexion
@@ -547,7 +615,7 @@
             const sphereGeomM0 = new THREE.SphereGeometry(0.016, 16, 16);
             const sphereGeomSmall = new THREE.SphereGeometry(0.011, 16, 16);
 
-            // 1. Draw Skeleton Lines (Parent M0 -> Child M0)
+            // Squelette MoCap
             if (showSkeleton && observationData.bones_hierarchy) {
                 const skeletonPoints = [];
                 for (const [bone, parent] of Object.entries(observationData.bones_hierarchy)) {
@@ -562,12 +630,11 @@
                 if (skeletonPoints.length > 0) {
                     const skelGeom = new THREE.BufferGeometry().setFromPoints(skeletonPoints);
                     const skelMat = new THREE.LineBasicMaterial({ color: 0x58a6ff, linewidth: 2, transparent: true, opacity: 0.7 });
-                    const skelLine = new THREE.LineSegments(skelGeom, skelMat);
-                    markerMeshGroup.add(skelLine);
+                    markerMeshGroup.add(new THREE.LineSegments(skelGeom, skelMat));
                 }
             }
 
-            // 2. Draw 4 Markers and Tetrahedrons per Bone
+            // 4 Marqueurs & Cages
             for (const [bone, pts] of Object.entries(frameData)) {
                 if (selectedBone !== 'all' && bone !== selectedBone) continue;
                 if (!pts || pts.length < 4) continue;
@@ -577,7 +644,6 @@
                 const m2 = new THREE.Vector3(pts[2][0], pts[2][1], pts[2][2]);
                 const m3 = new THREE.Vector3(pts[3][0], pts[3][1], pts[3][2]);
 
-                // Store trails
                 if (!markerHistory[bone]) markerHistory[bone] = [];
                 markerHistory[bone].push(m0.clone());
                 if (markerHistory[bone].length > MAX_TRAIL_LENGTH) {
@@ -602,7 +668,6 @@
                     markerMeshGroup.add(meshM3);
                 }
 
-                // Tetrahedron wireframe
                 if (showCages) {
                     const cagePoints = [
                         m0, m1,  m0, m2,  m0, m3,
@@ -613,27 +678,17 @@
                     cageLinesGroup.add(new THREE.LineSegments(cageGeom, cageMat));
                 }
 
-                // 3. Draw Local Frame RGB Axes
                 if (showAxes && axesData && axesData[bone]) {
                     const ax = axesData[bone];
                     const origin = new THREE.Vector3(ax.origin[0], ax.origin[1], ax.origin[2]);
                     const len = 0.08;
-
-                    // X: Red (longitudinal)
-                    const dirX = new THREE.Vector3(ax.axis_x[0], ax.axis_x[1], ax.axis_x[2]);
-                    axesGroup.add(new THREE.ArrowHelper(dirX, origin, len, 0xff3b30, 0.02, 0.015));
-
-                    // Y: Green (flexion)
-                    const dirY = new THREE.Vector3(ax.axis_y[0], ax.axis_y[1], ax.axis_y[2]);
-                    axesGroup.add(new THREE.ArrowHelper(dirY, origin, len, 0x34c759, 0.02, 0.015));
-
-                    // Z: Blue (twist)
-                    const dirZ = new THREE.Vector3(ax.axis_z[0], ax.axis_z[1], ax.axis_z[2]);
-                    axesGroup.add(new THREE.ArrowHelper(dirZ, origin, len, 0x007aff, 0.02, 0.015));
+                    axesGroup.add(new THREE.ArrowHelper(new THREE.Vector3(ax.axis_x[0], ax.axis_x[1], ax.axis_x[2]), origin, len, 0xff3b30, 0.02, 0.015));
+                    axesGroup.add(new THREE.ArrowHelper(new THREE.Vector3(ax.axis_y[0], ax.axis_y[1], ax.axis_y[2]), origin, len, 0x34c759, 0.02, 0.015));
+                    axesGroup.add(new THREE.ArrowHelper(new THREE.Vector3(ax.axis_z[0], ax.axis_z[1], ax.axis_z[2]), origin, len, 0x007aff, 0.02, 0.015));
                 }
             }
 
-            // 4. Render Trails
+            // Trails
             clearGroup(trailsGroup);
             if (showTrails) {
                 for (const [bone, pts] of Object.entries(markerHistory)) {
@@ -654,20 +709,96 @@
             }
         }
 
+        // --- Load Avatar 3D (.glb) ---
+        function loadGLBFile(fileOrUrl, filename = "Avatar.glb") {
+            const loader = new THREE.GLTFLoader();
+            const onLoad = (gltf) => {
+                if (gltfModel) scene.remove(gltfModel);
+                if (skeletonHelper) scene.remove(skeletonHelper);
+                modelMarkersList = [];
+                modelAxesList = [];
+
+                gltfModel = gltf.scene;
+                scene.add(gltfModel);
+
+                // SkeletonHelper
+                skeletonHelper = new THREE.SkeletonHelper(gltfModel);
+                skeletonHelper.material.linewidth = 2;
+                skeletonHelper.material.color = new THREE.Color(0x388bfd);
+                skeletonHelper.visible = document.getElementById('toggle-model-skeleton').checked;
+                scene.add(skeletonHelper);
+
+                // Matériaux translucides pour observer les os & marqueurs internes (mode Rayons X)
+                gltfModel.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material = child.material.clone();
+                        child.material.transparent = true;
+                        child.material.opacity = currentModelOpacity;
+                        child.material.depthWrite = true;
+                    }
+                    if (child.isBone) {
+                        // Sphère marqueur ancrée au joint
+                        const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ffff });
+                        const sphereGeom = new THREE.SphereGeometry(0.018, 12, 12);
+                        const boneMarker = new THREE.Mesh(sphereGeom, sphereMat);
+                        boneMarker.name = "anchor_marker";
+                        boneMarker.visible = document.getElementById('toggle-model-markers').checked;
+                        child.add(boneMarker);
+                        modelMarkersList.push(boneMarker);
+
+                        // Trièdre local RGB ancré au repère d'os
+                        const axesH = new THREE.AxesHelper(0.08);
+                        axesH.visible = document.getElementById('toggle-model-axes').checked;
+                        child.add(axesH);
+                        modelAxesList.push(axesH);
+                    }
+                });
+
+                // Animations glTF
+                if (gltf.animations && gltf.animations.length > 0) {
+                    animationMixer = new THREE.AnimationMixer(gltfModel);
+                    const clip = gltf.animations[0];
+                    const action = animationMixer.clipAction(clip);
+                    action.play();
+
+                    const clipFrames = Math.max(Math.floor(clip.duration * fps), 1);
+                    if (!observationData) {
+                        totalFramesCount = clipFrames;
+                        document.getElementById('scrubber').max = totalFramesCount - 1;
+                        document.getElementById('info-frames').innerText = `${totalFramesCount} (${fps} fps)`;
+                    }
+                }
+
+                document.getElementById('info-model').innerText = `${filename}`;
+                centerCameraOnObject(gltfModel);
+                renderFrame(currentFrame);
+            };
+
+            if (typeof fileOrUrl === 'string') {
+                loader.load(fileOrUrl, onLoad, undefined, (err) => {
+                    console.log("Chargement auto GLB local: non disponible", err);
+                });
+            } else {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    loader.parse(e.target.result, '', onLoad);
+                };
+                reader.readAsArrayBuffer(fileOrUrl);
+            }
+        }
+
         // --- Load JSON Payload ---
         function loadJSON(jsonString) {
             try {
                 observationData = JSON.parse(jsonString);
                 currentFrame = 0;
                 markerHistory = {};
+                totalFramesCount = observationData.metadata.frame_count;
 
-                // Update UI Header
                 document.getElementById('badge-source').innerText = `${observationData.metadata.source_name}`;
                 document.getElementById('info-source').innerText = observationData.metadata.source_name;
                 document.getElementById('info-frames').innerText = `${observationData.metadata.frame_count} (${observationData.metadata.fps} fps)`;
-                document.getElementById('info-bones').innerText = `${observationData.metadata.bone_count}`;
 
-                // Populate Bone Select
                 const select = document.getElementById('bone-select');
                 select.innerHTML = '<option value="all">-- Observer tous les os --</option>';
                 for (const bone of Object.keys(observationData.bones_hierarchy)) {
@@ -677,10 +808,9 @@
                     select.appendChild(opt);
                 }
 
-                // Setup Scrubber
                 const scrubber = document.getElementById('scrubber');
                 scrubber.min = 0;
-                scrubber.max = observationData.metadata.frame_count - 1;
+                scrubber.max = totalFramesCount - 1;
                 scrubber.value = 0;
 
                 renderFrame(0);
@@ -708,6 +838,17 @@
             }
         }
 
+        function centerCameraOnObject(obj) {
+            const box = new THREE.Box3().setFromObject(obj);
+            if (!box.isEmpty()) {
+                const center = new THREE.Vector3();
+                box.getCenter(center);
+                controls.target.copy(center);
+                camera.position.set(center.x, center.y + 0.2, center.z + 2.2);
+                controls.update();
+            }
+        }
+
         // --- Event Listeners ---
         document.getElementById('file-input').addEventListener('change', (e) => {
             const file = e.target.files[0];
@@ -718,6 +859,13 @@
             }
         });
 
+        document.getElementById('glb-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                loadGLBFile(file, file.name);
+            }
+        });
+
         const dropZone = document.getElementById('drop-zone');
         window.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.display = 'flex'; });
         window.addEventListener('dragleave', (e) => { if (e.clientX <= 0 || e.clientY <= 0) dropZone.style.display = 'none'; });
@@ -725,14 +873,18 @@
             e.preventDefault();
             dropZone.style.display = 'none';
             const file = e.dataTransfer.files[0];
-            if (file && file.name.endsWith('.json')) {
-                const reader = new FileReader();
-                reader.onload = (evt) => loadJSON(evt.target.result);
-                reader.readAsText(file);
+            if (file) {
+                if (file.name.endsWith('.json')) {
+                    const reader = new FileReader();
+                    reader.onload = (evt) => loadJSON(evt.target.result);
+                    reader.readAsText(file);
+                } else if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
+                    loadGLBFile(file, file.name);
+                }
             }
         });
 
-        // Timeline Scrubber
+        // Timeline
         document.getElementById('scrubber').addEventListener('input', (e) => {
             currentFrame = parseInt(e.target.value);
             renderFrame(currentFrame);
@@ -754,24 +906,27 @@
 
         // Frame Steps
         document.getElementById('btn-step-prev').addEventListener('click', () => {
-            if (!observationData) return;
+            if (totalFramesCount <= 0) return;
             isPlaying = false;
             btnPlay.innerText = "▶ Lecture";
-            currentFrame = (currentFrame - 1 + observationData.frames.length) % observationData.frames.length;
+            currentFrame = (currentFrame - 1 + totalFramesCount) % totalFramesCount;
             document.getElementById('scrubber').value = currentFrame;
             renderFrame(currentFrame);
         });
 
         document.getElementById('btn-step-next').addEventListener('click', () => {
-            if (!observationData) return;
+            if (totalFramesCount <= 0) return;
             isPlaying = false;
             btnPlay.innerText = "▶ Lecture";
-            currentFrame = (currentFrame + 1) % observationData.frames.length;
+            currentFrame = (currentFrame + 1) % totalFramesCount;
             document.getElementById('scrubber').value = currentFrame;
             renderFrame(currentFrame);
         });
 
-        document.getElementById('btn-reset-cam').addEventListener('click', centerCameraOnSkeleton);
+        document.getElementById('btn-reset-cam').addEventListener('click', () => {
+            if (gltfModel) centerCameraOnObject(gltfModel);
+            else centerCameraOnSkeleton();
+        });
 
         // Speeds
         const setSpeed = (spd, btn) => {
@@ -783,7 +938,40 @@
         document.getElementById('spd-05').addEventListener('click', (e) => setSpeed(0.5, e.target));
         document.getElementById('spd-1').addEventListener('click', (e) => setSpeed(1.0, e.target));
 
-        // Bone selection change
+        // Opacity Slider (Rayons X)
+        document.getElementById('slider-opacity').addEventListener('input', (e) => {
+            currentModelOpacity = parseFloat(e.target.value) / 100.0;
+            document.getElementById('model-opacity-val').innerText = `${e.target.value}%`;
+            if (gltfModel) {
+                gltfModel.traverse((child) => {
+                    if (child.isMesh && child.material) {
+                        child.material.opacity = currentModelOpacity;
+                        child.material.transparent = currentModelOpacity < 1.0;
+                    }
+                });
+            }
+        });
+
+        // Toggles Avatar 3D
+        document.getElementById('toggle-model').addEventListener('change', (e) => {
+            if (gltfModel) gltfModel.visible = e.target.checked;
+        });
+        document.getElementById('toggle-model-markers').addEventListener('change', (e) => {
+            modelMarkersList.forEach(m => m.visible = e.target.checked);
+        });
+        document.getElementById('toggle-model-skeleton').addEventListener('change', (e) => {
+            if (skeletonHelper) skeletonHelper.visible = e.target.checked;
+        });
+        document.getElementById('toggle-model-axes').addEventListener('change', (e) => {
+            modelAxesList.forEach(a => a.visible = e.target.checked);
+        });
+
+        // Toggles MoCap
+        ['toggle-skeleton', 'toggle-markers', 'toggle-cages', 'toggle-axes', 'toggle-trails'].forEach(id => {
+            document.getElementById(id).addEventListener('change', () => renderFrame(currentFrame));
+        });
+
+        // Bone Select
         document.getElementById('bone-select').addEventListener('change', (e) => {
             const bone = e.target.value;
             const details = document.getElementById('bone-details');
@@ -799,20 +987,20 @@
             renderFrame(currentFrame);
         });
 
-        // Toggles
-        ['toggle-skeleton', 'toggle-markers', 'toggle-cages', 'toggle-axes', 'toggle-trails'].forEach(id => {
-            document.getElementById(id).addEventListener('change', () => renderFrame(currentFrame));
-        });
-
-        // Auto-load marker_observations.json if accessible
+        // Auto-load files on startup
         window.addEventListener('DOMContentLoaded', () => {
             initScene();
+            // 1. Observation JSON
             fetch('./marker_observations.json')
                 .then(r => r.ok ? r.text() : Promise.reject())
                 .then(txt => loadJSON(txt))
-                .catch(() => {
-                    // Normal if running via file:// protocol
-                });
+                .catch(() => {});
+
+            // 2. GLB Avatar (clara_animated.glb ou clara.glb)
+            fetch('../clara_animated.glb')
+                .then(r => r.ok ? r.blob() : fetch('../clara.glb').then(r2 => r2.ok ? r2.blob() : Promise.reject()))
+                .then(blob => loadGLBFile(blob, "clara_animated.glb"))
+                .catch(() => {});
         });
     </script>
 </body>
