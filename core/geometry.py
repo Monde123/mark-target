@@ -50,12 +50,13 @@ def quat_mul(a: np.ndarray, b: np.ndarray) -> np.ndarray:
 
 
 def rotate_vector(q: np.ndarray, v: np.ndarray) -> np.ndarray:
-    """Fait tourner un vecteur 3D v par le quaternion q [w, x, y, z]."""
-    q = quat_normalize(q)
-    v = np.asarray(v, dtype=np.float64)
-    q_v = np.array([0.0, v[0], v[1], v[2]], dtype=np.float64)
-    q_res = quat_mul(quat_mul(q, q_v), quat_inv(q))
-    return q_res[1:4]
+    """Fait tourner un vecteur 3D v par le quaternion unitaire q [w, x, y, z] (formule de Rodrigues)."""
+    q_norm = quat_normalize(q)
+    v_arr = np.asarray(v, dtype=np.float64)
+    w = q_norm[0]
+    u = q_norm[1:4]
+    t = 2.0 * np.cross(u, v_arr)
+    return v_arr + w * t + np.cross(u, t)
 
 
 def quat_from_two_vectors(u: np.ndarray, v: np.ndarray, eps: float = 1e-8) -> np.ndarray:
@@ -143,3 +144,13 @@ def quaternion_to_matrix(q: np.ndarray) -> np.ndarray:
         [2.0*(x*y + z*w),       1.0 - 2.0*(x*x + z*z), 2.0*(y*z - x*w)],
         [2.0*(x*z - y*w),       2.0*(y*z + x*w),       1.0 - 2.0*(x*x + y*y)],
     ], dtype=np.float64)
+
+
+def quat_angle(q1: np.ndarray, q2: np.ndarray) -> float:
+    """Distance géodésique angulaire (en radians) entre deux quaternions sur SO(3)."""
+    q1_n = quat_normalize(q1)
+    q2_n = quat_normalize(q2)
+    dot = abs(float(np.dot(q1_n, q2_n)))
+    dot = min(1.0, max(-1.0, dot))
+    return 2.0 * float(np.arccos(dot))
+
