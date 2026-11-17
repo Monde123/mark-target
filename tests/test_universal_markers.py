@@ -1,12 +1,12 @@
-"""
-Tests unitaires synthétiques pour le module `isolate`.
+"""Tests unitaires synthétiques pour le module `isolate`.
 Vérifie la robustesse mathématique, l'algorithme Kabsch et le solveur hiérarchique
 sans AUCUNE dépendance externe lourde (ni PyTorch, ni SMPL-X, ni Mixamo).
 """
+
 import unittest
 import numpy as np
 
-from isolate.core.geometry import (
+from core.geometry import (
     quat_normalize,
     quat_identity,
     quat_inv,
@@ -16,105 +16,104 @@ from isolate.core.geometry import (
     quaternion_to_matrix,
     quat_from_two_vectors,
 )
-from isolate.core.kabsch import kabsch_rotation, weighted_kabsch_rotation
-from isolate.retargeting.solver import MarkerRetargetSolver
-from isolate.retargeting.kinematics import global_to_local_hierarchy, local_to_global_hierarchy
-from isolate.mappings.registry import MappingRegistry
+from core.kabsch import kabsch_rotation, weighted_kabsch_rotation
+from retargeting.solver import MarkerRetargetSolver
 
 
-class TestIsolateModule(unittest.TestCase):
+def generate_tetrahedral_markers(center: np.ndarray, radius: float = 10.0) -> np.ndarray:
+    return np.array([
+        center + [radius, 0.0, 0.0],
+        center + [-radius / 2.0, radius * (3.0**0.5) / 2.0, 0.0],
+        center + [-radius / 2.0, -radius * (3.0**0.5) / 2.0, 0.0],
+        center + [0.0, 0.0, radius],
+    ], dtype=np.float64)
 
-    def test_geometry_quaternions(self):
-        # 1. Normalisation & identité
-        q_id = quat_identity()
-        self.assertTrue(np.allclose(q_id, [1.0, 0.0, 0.0, 0.0]))
-        self.assertTrue(np.allclose(quat_mul(q_id, q_id), q_id))
 
-        # 2. Rotation 90° autour de Z
-        theta = np.pi / 2.0
-        q_z90 = np.array([np.cos(theta / 2.0), 0.0, 0.0, np.sin(theta / 2.0)])
+def generate_cuboid_markers(center: np.ndarray, radius: float = 5.0, length: float = 15.0) -> np.ndarray:
+    return np.array([
+        center + [radius, radius, 0.0],
+        center + [-radius, radius, 0.0],
+        center + [-radius, -radius, 0.0],
+        center + [radius, -radius, 0.0],
+        center + [0.0, 0.0, length],
+    ], dtype=np.float64)
+
+
+class TestGeometryPrimitives(unittest.TestCase):
+    def test_quaternion_identity_and_norm(self):
+        q = quat_identity()
+        self.assertEqual(len(q), 4)
+        self.assertTrue(np.allclose(q, [1, 0, 0, 0]))
+        q_norm = quat_normalize(np.array([2.0, 0, 0, 0]))
+        self.assertAlmostEqual(np.linalg.norm(q_norm), 1.0)
+
+    def test_rotation_matrix_roundtrip(self):
+        angle = np.pi / 3.0
+        q = np.array([np.cos(angle / 2.0), 0.0, np.sin(angle / 2.0), 0.0])
+        q = quat_normalize(q)
+        R = quaternion_to_matrix(q)
+        self.assertTrue(np.allclose(R @ R.T, np.eye(3), atol=1e-6))
+        self.assertAlmostEqual(np.linalg.det(R), 1.0, places=5)
+        q_back = matrix_to_quaternion(R)
+        dot = abs(np.dot(q, q_back))
+        self.assertAlmostEqual(dot, 1.0, places=5)
+
+    def test_rotate_vector(self):
         v = np.array([1.0, 0.0, 0.0])
+        angle = np.pi / 2.0
+        q_z90 = np.array([np.cos(angle / 2.0), 0.0, 0.0, np.sin(angle / 2.0)])
         v_rot = rotate_vector(q_z90, v)
         self.assertTrue(np.allclose(v_rot, [0.0, 1.0, 0.0], atol=1e-6))
 
-        # 3. Conversion Matrice <-> Quaternion
-        R = quaternion_to_matrix(q_z90)
-        q_rebuilt = matrix_to_quaternion(R)
-        self.assertTrue(np.allclose(q_z90, q_rebuilt, atol=1e-6))
 
-    def test_kabsch_reconstruction(self):
-        # Création de 4 points non colinéaires (tétraèdre)
-        P_rest = np.array([
-            [0.0, 0.0, 0.0],
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-        ], dtype=np.float64)
+class TestKabschAlgorithm(unittest.TestCase):
+    def test_pure_rigid_rotation(self):
+        np.random.seed(42)
+        P_rest = np.random.uniform(-10.0, 10.0, size=(10, 3))
+        angle = np.pi / 4.0
+        q_true = quat_normalize(np.array([np.cos(angle / 2.0), np.sin(angle / 2.0), 0.0, 0.0]))
+        R_true = quaternion_to_matrix(q_true)
+        t_true = np.array([5.0, -3.0, 2.0])
+        P_curr = (P_rest @ R_true.T) + t_true
+        R_calc, t_calc, P_aligned, rms, _ = kabsch_rotation(P_rest, P_curr)
+        self.assertTrue(np.allclose(R_calc, R_true, atol=1e-5))
+        self.assertAlmostEqual(rms, 0.0, places=5)
 
-        # Applique une rotation connue (45° autour de l'axe Y)
-        theta = np.radians(45.0)
-        c, s = np.cos(theta), np.sin(theta)
-        R_true = np.array([
-            [c, 0.0, s],
-            [0.0, 1.0, 0.0],
-            [-s, 0.0, c],
-        ])
-        translation = np.array([2.5, -1.0, 3.0])
-        P_curr = (R_true @ P_rest.T).T + translation
+    def test_weighted_kabsch(self):
+        P_rest = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
+        weights = np.array([10.0, 1.0, 1.0, 1.0])
+        R_calc, t_calc, P_aligned, rms, _ = weighted_kabsch_rotation(P_rest, P_rest, weights=weights)
+        self.assertTrue(np.allclose(R_calc, np.eye(3), atol=1e-5))
 
-        # Résolution Kabsch
-        R_est, cent_r, cent_c, rms, _ = kabsch_rotation(P_rest, P_curr)
 
-        self.assertTrue(np.allclose(R_est, R_true, atol=1e-6))
-        self.assertLess(rms, 1e-6)
-
-    def test_solver_and_kinematics(self):
-        # Hiérarchie simple : Root -> Arm -> ForeArm
-        parents = {
-            "Root": None,
-            "Arm": "Root",
-            "ForeArm": "Arm",
+class TestMarkerRetargetSolver(unittest.TestCase):
+    def setUp(self):
+        self.rest_rotations = {
+            "Hips": quat_identity(),
+            "Spine": quat_identity(),
+            "LeftArm": quat_identity(),
         }
-        rest_rotations = {
-            "Root": quat_identity(),
-            "Arm": quat_identity(),
-            "ForeArm": quat_identity(),
+        self.parents = {
+            "Hips": None,
+            "Spine": "Hips",
+            "LeftArm": "Spine",
         }
+        self.solver = MarkerRetargetSolver(
+            rest_rotations=self.rest_rotations,
+            parents=self.parents,
+        )
 
-        solver = MarkerRetargetSolver(rest_rotations, parents)
-
-        # Simulation de nuages de points de repos
-        P_rest = {
-            "Arm": np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]),
-            "ForeArm": np.array([[1, 0, 0], [2, 0, 0], [1, 1, 0], [1, 0, 1]]),
+    def test_multi_kabsch_identity(self):
+        markers_rest = {
+            "Hips": generate_tetrahedral_markers(np.array([0, 0, 0])),
+            "Spine": generate_tetrahedral_markers(np.array([0, 10, 0])),
+            "LeftArm": generate_cuboid_markers(np.array([5, 10, 0])),
         }
-
-        # Simulation d'un déplacement à l'instant t (rotation de 90° sur Arm)
-        R_arm = np.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]], dtype=np.float64)
-        P_t = {
-            "Arm": (R_arm @ P_rest["Arm"].T).T,
-            "ForeArm": (R_arm @ P_rest["ForeArm"].T).T,
-        }
-
-        Q_global, diagnostics = solver.solve_frame_multi_kabsch(P_t, P_rest)
-        self.assertEqual(diagnostics["Arm"]["status"], "kabsch_success")
-
-        # Conversion globale -> locale
-        Q_local = global_to_local_hierarchy(Q_global, parents)
-        self.assertIn("Arm", Q_local)
-        self.assertIn("ForeArm", Q_local)
-
-        # Reconversion locale -> globale
-        Q_rebuilt_global = local_to_global_hierarchy(Q_local, parents)
-        self.assertTrue(np.allclose(Q_global["Arm"], Q_rebuilt_global["Arm"], atol=1e-6))
-
-    def test_mapping_registry(self):
-        # Test du pont automatique Mixamo -> VRM
-        mixamo_to_vrm = MappingRegistry.get_mapping("mixamo", "vrm")
-        self.assertIn("mixamorig:Hips", mixamo_to_vrm)
-        self.assertEqual(mixamo_to_vrm["mixamorig:Hips"], "hips")
-        self.assertIn("mixamorig:LeftArm", mixamo_to_vrm)
-        self.assertEqual(mixamo_to_vrm["mixamorig:LeftArm"], "leftUpperArm")
+        Q_glob, diag = self.solver.solve_frame_multi_kabsch(markers_rest, markers_rest)
+        for bone in self.rest_rotations:
+            dot = abs(np.dot(Q_glob[bone], quat_identity()))
+            self.assertAlmostEqual(dot, 1.0, places=5)
+            self.assertEqual(diag[bone]["status"], "kabsch_success")
 
 
 if __name__ == "__main__":

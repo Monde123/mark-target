@@ -11,7 +11,10 @@ import re
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Any
 
-from base import SourceAdapter, TargetAdapter, TargetSkeleton, MarkerFrameSequence
+try:
+    from adapters.base import SourceAdapter, TargetAdapter, TargetSkeleton, MarkerFrameSequence
+except ImportError:
+    from base import SourceAdapter, TargetAdapter, TargetSkeleton, MarkerFrameSequence
 from core.geometry import quat_identity, quat_normalize, quaternion_to_matrix
 
 

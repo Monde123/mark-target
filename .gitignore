@@ -41,3 +41,4 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+examples/output_retargeted.bvh
